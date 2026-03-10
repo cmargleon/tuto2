@@ -1,0 +1,17 @@
+node_modules
+dist
+.env
+data/jobs/*.json
+data/state/*.json
+data/output/*
+data/approved/*
+!data/input/.gitkeep
+!data/input/garments/.gitkeep
+!data/input/models/.gitkeep
+!data/input/poses/.gitkeep
+!data/jobs/.gitkeep
+!data/output/.gitkeep
+!data/approved/.gitkeep
+!data/state/.gitkeep
+!data/state/sample-job.manifest.json
+!data/state/prompt-config.example.json

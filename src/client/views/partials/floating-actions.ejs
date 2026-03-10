@@ -1,0 +1,12 @@
+<button
+  id="finalize-approval-button"
+  class="finalize-approval-button <%= readyPoseCount < 4 ? 'disabled' : '' %>"
+  type="button"
+  <%= readyPoseCount < 4 ? 'disabled' : '' %>
+  title="<%= readyPoseCount < 4 ? 'Se habilita cuando existan las 4 imagenes.' : 'Aprobar set completo' %>"
+>
+  Aprobar set completo
+</button>
+<button id="save-batch-button" class="save-batch-button" type="button">
+  Guardar batch
+</button>

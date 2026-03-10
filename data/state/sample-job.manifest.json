@@ -1,0 +1,43 @@
+{
+  "productId": "falda-negra-01",
+  "sourceName": "falda-negra-01",
+  "garmentImages": [
+    "data/input/garments/falda-negra-01/front.jpg"
+  ],
+  "selectedModel": "data/input/models/model-03.jpg",
+  "category": "parte_baja",
+  "poses": [
+    {
+      "poseId": "pose1",
+      "variantCount": 2,
+      "status": "ready",
+      "regenerateCount": 0
+    },
+    {
+      "poseId": "pose2",
+      "variantCount": 2,
+      "status": "ready",
+      "regenerateCount": 0
+    },
+    {
+      "poseId": "pose3",
+      "variantCount": 2,
+      "status": "pending",
+      "regenerateCount": 0
+    },
+    {
+      "poseId": "pose4",
+      "variantCount": 2,
+      "status": "pending",
+      "regenerateCount": 0
+    }
+  ],
+  "outputs": [],
+  "approved": {
+    "pose1": "falda-negra-01-pose1-a",
+    "pose2": "falda-negra-01-pose2-b"
+  },
+  "status": "in_review",
+  "createdAt": "2026-03-08T20:00:00.000Z",
+  "updatedAt": "2026-03-08T20:10:00.000Z"
+}

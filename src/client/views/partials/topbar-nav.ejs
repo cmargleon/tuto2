@@ -1,0 +1,15 @@
+<header class="topbar utility-topbar">
+  <div class="nav-buttons">
+    <% if (previous) { %>
+      <a class="nav-button" href="/review/<%= previous %>">Anterior</a>
+    <% } else { %>
+      <span class="nav-button disabled">Anterior</span>
+    <% } %>
+    <% if (next) { %>
+      <a class="nav-button" href="/review/<%= next %>">Siguiente</a>
+    <% } else { %>
+      <span class="nav-button disabled">Siguiente</span>
+    <% } %>
+  </div>
+  <div id="flash" class="flash" aria-live="polite"></div>
+</header>

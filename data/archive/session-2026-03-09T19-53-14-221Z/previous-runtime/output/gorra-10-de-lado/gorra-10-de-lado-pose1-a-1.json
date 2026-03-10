@@ -1,0 +1,14 @@
+{
+  "prompt": "System instructions:\n- Use the selected model image as the person identity reference.\n- Replace the model's current clothing with the garment shown in the 1 garment reference image(s).\n- Follow the attached pose reference image for Pose 1 as the target pose, framing and body direction.\n- Keep the garment faithful to the reference images in color, shape, logo placement and visible details.\n- Generate one final photorealistic image.\n\nUser prompt:\nCambia el gorro",
+  "poseId": "pose1",
+  "variantKey": "a",
+  "provider": "fal-ai",
+  "model": "fal-ai/bytedance/seedream/v4.5/edit",
+  "endpoint": "fal.subscribe",
+  "timestamp": "2026-03-09T19:48:34.838Z",
+  "responseId": "4e0e5c98-d9dc-405f-bed0-1ca471dfc04b",
+  "notes": [
+    "Salida adaptada localmente a 1000x1000 JPG con densidad 72 ppp.",
+    "El MVP no garantiza Adobe RGB; se guarda en JPEG estandar generado con Sharp."
+  ]
+}

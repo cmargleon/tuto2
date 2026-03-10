@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Clientes</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body class="dashboard-body" data-page="clients">
+    <div class="dashboard-layout">
+      <%- include("partials/dashboard-sidebar", {
+        activeMenu,
+        isSidebarCollapsed: false,
+        product: null,
+        allProducts: [],
+        basename,
+        fileUrl,
+        explicitSelections: 0
+      }) %>
+
+      <main class="dashboard-content">
+        <section class="topbar app-topbar">
+          <div class="topbar-title">
+            <p class="eyebrow">CRM Basico</p>
+            <h2>Clientes</h2>
+            <p class="muted">Esta area prepara la app para separar batches, reglas de prompts y exportaciones por cliente sin mezclar la operacion creativa con la revision.</p>
+          </div>
+          <div class="batch-card-actions">
+            <button type="button" id="open-create-client-modal">Agregar cliente</button>
+          </div>
+        </section>
+
+        <section class="dashboard-grid clients-grid">
+          <% if (!clients.length) { %>
+            <article class="summary-card dashboard-card">
+              <p class="summary-kicker">Sin clientes</p>
+              <h3>Aun no hay clientes cargados</h3>
+              <p class="muted">La base ya soporta clientes, pero todavia no hay registros disponibles.</p>
+            </article>
+          <% } %>
+
+          <% for (const client of clients) { %>
+            <article class="summary-card dashboard-card client-card">
+              <p class="summary-kicker">Cliente</p>
+              <h3><%= client.name %></h3>
+              <p class="muted"><%= client.notes || "Sin notas adicionales." %></p>
+              <div class="batch-stats">
+                <p><strong>Batches</strong><span><%= client.batchCount || 0 %></span></p>
+                <p><strong>Activos</strong><span><%= client.activeBatchCount || 0 %></span></p>
+                <p><strong>Completados</strong><span><%= client.completedCount || 0 %></span></p>
+                <p><strong>En revision</strong><span><%= client.inReviewCount || 0 %></span></p>
+                <p><strong>Errores</strong><span><%= client.errorCount || 0 %></span></p>
+              </div>
+              <div class="client-card-actions">
+                <a href="/batches?clientId=<%= client.clientId %>" class="secondary">Ver batches</a>
+                <a href="/?clientId=<%= client.clientId %>" class="secondary">Nuevo batch</a>
+              </div>
+              <div class="client-batch-preview-list">
+                <% if (!client.recentBatches?.length) { %>
+                  <p class="muted">Todavia no hay batches asociados.</p>
+                <% } %>
+                <% for (const batch of client.recentBatches || []) { %>
+                  <a href="/batches/<%= batch.batchId %>" class="client-batch-preview">
+                    <strong><%= batch.name %></strong>
+                    <span class="status <%= batch.status === "running" ? "generating" : batch.status === "completed" ? "approved" : batch.status %>"><%= batch.status %></span>
+                  </a>
+                <% } %>
+              </div>
+            </article>
+          <% } %>
+        </section>
+      </main>
+    </div>
+
+    <div class="modal-backdrop" id="create-client-modal" hidden>
+      <div class="modal-card modal-card-narrow">
+        <div class="modal-head">
+          <div>
+            <p class="summary-kicker">CRM Basico</p>
+            <h3>Agregar cliente</h3>
+          </div>
+          <button type="button" class="secondary" id="close-create-client-modal">Cerrar</button>
+        </div>
+        <div class="modal-content">
+          <div class="prompt-shell">
+            <label for="create-client-name">Nombre</label>
+            <input id="create-client-name" class="wizard-input" type="text" placeholder="Ej. Nike, Barbie, Under Armour" />
+          </div>
+          <div class="prompt-shell">
+            <label for="create-client-notes">Notas</label>
+            <textarea id="create-client-notes" rows="4" placeholder="Descripcion opcional del cliente"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <div id="create-client-feedback" class="flash" aria-live="polite"></div>
+          <button type="button" id="submit-create-client-button">Guardar cliente</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__PAGE_MODEL__ = {
+        page: "clients"
+      };
+    </script>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>

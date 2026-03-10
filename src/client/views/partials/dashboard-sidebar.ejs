@@ -1,0 +1,92 @@
+<aside class="dashboard-sidebar <%= isSidebarCollapsed ? 'collapsed' : '' %>" id="dashboard-sidebar">
+  <div class="dashboard-sidebar-inner">
+    <div class="dashboard-brand-row">
+      <div class="brand-mark">A2</div>
+      <div class="brand-copy brand-copy-dashboard">
+        <p class="eyebrow">Auto2 Dashboard</p>
+        <h1>Catalog Studio</h1>
+      </div>
+      <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-label="Colapsar menu">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+
+    <nav class="dashboard-nav">
+      <a href="/home" class="dashboard-nav-link <%= activeMenu === 'home' ? 'active' : '' %>">
+        <span class="dashboard-nav-icon">H</span>
+        <span class="dashboard-nav-text">Home</span>
+      </a>
+      <a href="/" class="dashboard-nav-link <%= activeMenu === 'generate-images' ? 'active' : '' %>">
+        <span class="dashboard-nav-icon">G</span>
+        <span class="dashboard-nav-text">Generar Imagenes</span>
+      </a>
+      <a href="/batches" class="dashboard-nav-link <%= activeMenu === 'batches' ? 'active' : '' %>">
+        <span class="dashboard-nav-icon">B</span>
+        <span class="dashboard-nav-text">Batches</span>
+      </a>
+      <a href="/clients" class="dashboard-nav-link <%= activeMenu === 'clients' ? 'active' : '' %>">
+        <span class="dashboard-nav-icon">C</span>
+        <span class="dashboard-nav-text">Clientes</span>
+      </a>
+    </nav>
+
+    <% if (product) { %>
+      <div class="dashboard-context">
+        <div class="summary-card summary-card-hero">
+          <p class="summary-kicker">Batch activo</p>
+          <p class="summary-id"><strong><%= product.productId %></strong></p>
+          <div class="summary-grid">
+            <p><strong>Categoria</strong><span><%= product.category %></span></p>
+            <p><strong>Estado</strong><span class="status <%= product.status %>"><%= product.status %></span></p>
+            <p><strong>Modelo</strong><span><%= basename(product.selectedModel) %></span></p>
+            <p><strong>Fotos prenda</strong><span><%= product.garmentImages.length %></span></p>
+            <p><strong>Selecciones</strong><span><%= explicitSelections %>/4</span></p>
+          </div>
+        </div>
+
+        <div class="thumbs thumbs-stack">
+          <div class="thumb-card thumb-card-wide">
+            <div class="thumb-head">
+              <p class="thumb-label">Prenda</p>
+              <span class="thumb-count"><%= product.garmentImages.length %> refs</span>
+            </div>
+            <div class="garment-reference-grid">
+              <% for (const garmentImage of product.garmentImages) { %>
+                <div class="garment-reference-item" data-garment-preview-src="<%= fileUrl(garmentImage) %>">
+                  <img src="<%= fileUrl(garmentImage) %>" alt="garment reference" />
+                </div>
+              <% } %>
+            </div>
+          </div>
+          <div class="thumb-card thumb-card-wide">
+            <p class="thumb-label">Modelo</p>
+            <img src="<%= fileUrl(product.selectedModel) %>" alt="model" />
+          </div>
+        </div>
+
+        <nav class="product-list">
+          <% for (const item of allProducts) { %>
+            <a href="/review/<%= item.productId %>" class="product-link <%= item.productId === product.productId ? 'active' : '' %>">
+              <span><%= item.productId %></span>
+              <span class="status <%= item.status %>"><%= item.status %></span>
+            </a>
+          <% } %>
+        </nav>
+      </div>
+    <% } else { %>
+      <div class="dashboard-context dashboard-context-placeholder">
+        <div class="summary-card summary-card-hero">
+          <p class="summary-kicker">Workspace</p>
+          <p class="summary-id"><strong>Auto2</strong></p>
+          <p class="muted">Navega entre las secciones del dashboard para revisar batches, consultar el estado de generacion y organizar clientes.</p>
+        </div>
+      </div>
+    <% } %>
+  </div>
+</aside>
+
+<div class="garment-preview-portal" id="garment-preview-portal" hidden>
+  <img id="garment-preview-image" alt="Vista ampliada de prenda" />
+</div>

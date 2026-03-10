@@ -1,0 +1,89 @@
+<% const poseOutputs = product.outputs.filter((output) => output.poseId === pose.poseId); %>
+<% const selectedOutputId = (product.approved[pose.poseId] && product.approved[pose.poseId][0]) || (poseOutputs.length ? poseOutputs[poseOutputs.length - 1].outputId : ""); %>
+<% const startIndex = poseOutputs.findIndex((output) => output.outputId === selectedOutputId); %>
+<% const loaderLabel = pose.regenerateCount > 0 ? "Regenerando" : "Generando"; %>
+<article class="pose-card <%= pose.status === 'generating' ? 'is-loading' : '' %>" data-pose-id="<%= pose.poseId %>">
+  <div class="loader-overlay">
+    <div class="spinner"></div>
+    <p class="loader-label" data-default-label="<%= loaderLabel %>"><%= loaderLabel %> <%= pose.poseId %>...</p>
+  </div>
+
+  <div class="pose-head">
+    <div>
+      <div class="pose-title-row">
+        <h2><%= pose.poseId.toUpperCase() %></h2>
+        <span class="status <%= pose.status %>"><%= pose.status %></span>
+      </div>
+      <p class="muted">Historial disponible: <%= poseOutputs.length %> imagen(es)</p>
+      <% if (pose.lastError) { %>
+        <p class="error-copy"><%= pose.lastError %></p>
+      <% } %>
+    </div>
+  </div>
+
+  <div class="carousel-shell" data-pose-id="<%= pose.poseId %>" data-current-index="<%= startIndex >= 0 ? startIndex : 0 %>">
+    <% if (poseOutputs.length > 1) { %>
+      <div class="thumb-carousel" data-pose-id="<%= pose.poseId %>">
+        <% for (const output of poseOutputs) { %>
+          <% const isSelectedThumb = output.outputId === selectedOutputId; %>
+          <button
+            class="thumb-button <%= isSelectedThumb ? 'active' : '' %>"
+            type="button"
+            data-pose-id="<%= pose.poseId %>"
+            data-output-id="<%= output.outputId %>"
+          >
+            <img src="<%= fileUrl(output.filePath) %>" alt="<%= output.outputId %>" />
+          </button>
+        <% } %>
+      </div>
+      <div class="carousel-controls">
+        <button class="carousel-button" type="button" data-direction="prev" data-pose-id="<%= pose.poseId %>">Anterior</button>
+        <span class="carousel-counter" data-pose-id="<%= pose.poseId %>"></span>
+        <button class="carousel-button" type="button" data-direction="next" data-pose-id="<%= pose.poseId %>">Siguiente</button>
+      </div>
+    <% } %>
+
+    <div class="carousel-track">
+      <% if (poseOutputs.length === 0) { %>
+        <div class="empty-state">Sin imagen todavia.</div>
+      <% } %>
+      <% for (const output of poseOutputs) { %>
+        <% const isSelected = output.outputId === selectedOutputId; %>
+        <div class="variant-card carousel-slide <%= isSelected ? 'approved' : '' %>" data-pose-id="<%= pose.poseId %>" data-output-id="<%= output.outputId %>">
+          <img src="<%= fileUrl(output.filePath) %>" alt="<%= output.outputId %>" />
+          <div class="variant-meta">
+            <div>
+              <strong>Imagen <%= output.fileName %></strong>
+              <p class="muted"><%= output.outputId %></p>
+            </div>
+            <button
+              class="approve-button <%= isSelected ? 'active' : '' %>"
+              data-pose-id="<%= pose.poseId %>"
+              data-output-id="<%= output.outputId %>"
+            >
+              <%= isSelected ? "Elegida" : "Elegir esta" %>
+            </button>
+          </div>
+        </div>
+      <% } %>
+    </div>
+  </div>
+
+  <div class="prompt-box">
+    <label for="prompt-<%= pose.poseId %>">Prompt para regenerar esta pose</label>
+    <div class="prompt-shell">
+      <textarea id="prompt-<%= pose.poseId %>" class="prompt-editor" data-pose-id="<%= pose.poseId %>" rows="5"><%= pose.promptOverride || pose.lastPromptUsed || pose.promptPreview || '' %></textarea>
+      <div class="prompt-footer">
+        <p class="muted prompt-hint" data-pose-id="<%= pose.poseId %>">Si lo dejas vacio, se usa el prompt general y el extra de esa pose si existen.</p>
+        <div class="prompt-actions-row">
+          <select class="wizard-select provider-model-select" data-pose-id="<%= pose.poseId %>">
+            <% for (const modelId of falModelOptions) { %>
+              <option value="<%= modelId %>" <%= modelId === currentProviderModelId ? "selected" : "" %>><%= modelId %></option>
+            <% } %>
+          </select>
+          <button class="secondary regenerate-button regenerate-button-bottom" data-pose-id="<%= pose.poseId %>">Regenerar imagen</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</article>

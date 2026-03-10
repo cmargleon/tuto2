@@ -1,0 +1,18 @@
+{
+  "defaultCategory": "parte_alta",
+  "categoryRules": [
+    {
+      "match": "dress|vestido",
+      "category": "vestido"
+    },
+    {
+      "match": "pant|jean|falda|short",
+      "category": "parte_baja"
+    },
+    {
+      "match": "bra|panty|interior",
+      "category": "interior_coordinado"
+    }
+  ],
+  "notes": "Si no hay match por nombre de archivo o carpeta, el sistema usa DEFAULT_CATEGORY."
+}

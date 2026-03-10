@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Batch <%= detail.batch.name %></title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body class="dashboard-body" data-page="batch-detail">
+    <div class="dashboard-layout">
+      <%- include("partials/dashboard-sidebar", {
+        activeMenu,
+        isSidebarCollapsed: false,
+        product: null,
+        allProducts: [],
+        basename,
+        fileUrl,
+        explicitSelections: 0
+      }) %>
+
+      <main class="dashboard-content">
+        <section class="topbar app-topbar">
+          <div class="topbar-title">
+            <p class="eyebrow">Batch Detail</p>
+            <h2><%= detail.batch.name %></h2>
+            <p class="muted">Cliente: <%= detail.batch.clientName || "Sin cliente" %> · Estado: <%= detail.batch.status %> · Modelo: <%= detail.batch.promptConfig.providerSettings.modelId %></p>
+          </div>
+          <div class="batch-card-actions">
+            <a href="/batches" class="secondary">Volver</a>
+            <button type="button" class="secondary batch-action-button" data-action="open" data-batch-id="<%= detail.batch.batchId %>">Abrir</button>
+            <button type="button" class="secondary batch-action-button" data-action="continue" data-batch-id="<%= detail.batch.batchId %>">Continuar</button>
+            <button type="button" class="secondary batch-action-button" data-action="duplicate" data-batch-id="<%= detail.batch.batchId %>">Duplicar</button>
+            <button type="button" class="secondary batch-action-button" data-action="archive" data-batch-id="<%= detail.batch.batchId %>">Archivar</button>
+            <button type="button" class="secondary batch-action-button batch-delete-button" data-action="delete" data-batch-id="<%= detail.batch.batchId %>">Eliminar</button>
+          </div>
+        </section>
+
+        <section class="dashboard-grid batch-detail-hero-grid">
+          <article class="summary-card dashboard-card">
+            <p class="summary-kicker">Resumen</p>
+            <div class="batch-stats">
+              <p><strong>Productos</strong><span><%= detail.batch.counts.products %></span></p>
+              <p><strong>Generando</strong><span><%= detail.batch.counts.generating %></span></p>
+              <p><strong>En revision</strong><span><%= detail.batch.counts.inReview %></span></p>
+              <p><strong>Aprobados</strong><span><%= detail.batch.counts.approved %></span></p>
+              <p><strong>Errores</strong><span><%= detail.batch.counts.error %></span></p>
+              <p><strong>Outputs</strong><span><%= detail.batch.counts.outputs %></span></p>
+            </div>
+          </article>
+          <article class="summary-card dashboard-card">
+            <p class="summary-kicker">Run info</p>
+            <div class="batch-stats">
+              <p><strong>Creado</strong><span><%= new Date(detail.batch.createdAt).toLocaleString("es-MX") %></span></p>
+              <p><strong>Actualizado</strong><span><%= new Date(detail.batch.updatedAt).toLocaleString("es-MX") %></span></p>
+              <p><strong>Actual</strong><span><%= detail.batch.active ? "Si" : "No" %></span></p>
+              <p><strong>Producto foco</strong><span><%= detail.batch.currentProductId || "N/A" %></span></p>
+              <p><strong>Snapshots</strong><span><%= detail.snapshots.length %></span></p>
+              <p><strong>Eventos</strong><span><%= detail.events.length %></span></p>
+            </div>
+          </article>
+          <article class="summary-card dashboard-card">
+            <p class="summary-kicker">Configuracion</p>
+            <div class="batch-stats">
+              <p><strong>Modelo</strong><span><%= detail.batch.promptConfig.providerSettings.modelId %></span></p>
+              <p><strong>Image size</strong><span><%= typeof detail.batch.promptConfig.providerSettings.imageSize === "string" ? detail.batch.promptConfig.providerSettings.imageSize : `${detail.batch.promptConfig.providerSettings.imageSize.width}x${detail.batch.promptConfig.providerSettings.imageSize.height}` %></span></p>
+              <p><strong>Seed</strong><span><%= detail.batch.promptConfig.providerSettings.seed ?? "Aleatoria" %></span></p>
+              <p><strong>Safety</strong><span><%= detail.batch.promptConfig.providerSettings.enableSafetyChecker ? "Activo" : "Off" %></span></p>
+              <p><strong>Sync mode</strong><span><%= detail.batch.promptConfig.providerSettings.syncMode ? "On" : "Off" %></span></p>
+              <p><strong>Cliente</strong><span><%= detail.batch.clientName || "Sin cliente" %></span></p>
+            </div>
+          </article>
+        </section>
+
+        <section class="dashboard-grid batch-detail-content-grid">
+          <article class="summary-card dashboard-card">
+            <div class="panel-head">
+              <div>
+                <p class="summary-kicker">Productos</p>
+                <h3>Estado por producto</h3>
+              </div>
+            </div>
+            <div class="batch-table-shell">
+              <table class="batch-table">
+                <thead>
+                  <tr>
+                    <th>Producto</th>
+                    <th>Estado</th>
+                    <th>Modelo</th>
+                    <th>Outputs</th>
+                    <th>Selecciones</th>
+                    <th>Accion</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% for (const product of detail.products) { %>
+                    <tr>
+                      <td><strong><%= product.productId %></strong><br /><span class="muted"><%= product.sourceName %></span></td>
+                      <td><span class="status <%= product.status %>"><%= product.status %></span></td>
+                      <td><%= basename(product.selectedModel) %></td>
+                      <td><%= product.outputs.length %></td>
+                      <td><%= Object.values(product.approved).reduce((sum, ids) => sum + ids.length, 0) %>/4</td>
+                      <td><a href="/review/<%= product.productId %>" class="secondary">Revisar</a></td>
+                    </tr>
+                  <% } %>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="summary-card dashboard-card">
+            <div class="panel-head">
+              <div>
+                <p class="summary-kicker">Jobs</p>
+                <h3>Cola y ejecuciones</h3>
+              </div>
+            </div>
+            <div class="job-list">
+              <% if (!detail.jobs.length) { %>
+                <div class="empty-state compact-empty">Aun no hay jobs registrados para este batch.</div>
+              <% } %>
+              <% for (const job of detail.jobs) { %>
+                <article class="job-card">
+                  <div class="job-card-head">
+                    <strong><%= job.productId %> · <%= job.poseId %></strong>
+                    <span class="status <%= job.status === "completed" ? "approved" : job.status === "running" ? "generating" : job.status %>"><%= job.status %></span>
+                  </div>
+                  <div class="batch-stats">
+                    <p><strong>Prioridad</strong><span><%= job.priority %></span></p>
+                    <p><strong>Intentos</strong><span><%= job.attempts %></span></p>
+                    <p><strong>Actualizado</strong><span><%= new Date(job.updatedAt).toLocaleString("es-MX") %></span></p>
+                  </div>
+                  <% if (job.lastError) { %>
+                    <p class="batch-error-inline"><%= job.lastError %></p>
+                  <% } %>
+                  <% if (job.attemptsHistory.length) { %>
+                    <details class="job-attempts-toggle">
+                      <summary>Ver intentos</summary>
+                      <div class="timeline-list compact-timeline">
+                        <% for (const attempt of job.attemptsHistory.slice(0, 4)) { %>
+                          <div class="timeline-item">
+                            <div class="timeline-dot"></div>
+                            <div>
+                              <strong><%= attempt.status %></strong>
+                              <p class="muted"><%= new Date(attempt.startedAt).toLocaleString("es-MX") %></p>
+                              <% if (attempt.error) { %><p class="batch-error-inline"><%= attempt.error %></p><% } %>
+                            </div>
+                          </div>
+                        <% } %>
+                      </div>
+                    </details>
+                  <% } %>
+                </article>
+              <% } %>
+            </div>
+          </article>
+
+          <article class="summary-card dashboard-card">
+            <div class="panel-head">
+              <div>
+                <p class="summary-kicker">Timeline</p>
+                <h3>Eventos del batch</h3>
+              </div>
+            </div>
+            <div class="timeline-list">
+              <% if (!detail.events.length) { %>
+                <div class="empty-state compact-empty">No hay eventos registrados.</div>
+              <% } %>
+              <% for (const event of detail.events.slice().reverse()) { %>
+                <div class="timeline-item">
+                  <div class="timeline-dot"></div>
+                  <div>
+                    <strong><%= event.message %></strong>
+                    <p class="muted"><%= event.type %> · <%= new Date(event.timestamp).toLocaleString("es-MX") %></p>
+                    <% if (event.productId || event.poseId) { %>
+                      <p class="muted"><%= event.productId || "batch" %><%= event.poseId ? ` · ${event.poseId}` : "" %></p>
+                    <% } %>
+                  </div>
+                </div>
+              <% } %>
+            </div>
+          </article>
+
+          <article class="summary-card dashboard-card">
+            <div class="panel-head">
+              <div>
+                <p class="summary-kicker">Snapshots</p>
+                <h3>Guardados del batch</h3>
+              </div>
+            </div>
+            <div class="snapshot-list">
+              <% if (!detail.snapshots.length) { %>
+                <div class="empty-state compact-empty">Aun no hay snapshots manuales.</div>
+              <% } %>
+              <% for (const snapshot of detail.snapshots) { %>
+                <article class="snapshot-card">
+                  <strong><%= snapshot.snapshotId %></strong>
+                  <p class="muted"><%= new Date(snapshot.createdAt).toLocaleString("es-MX") %></p>
+                  <p class="muted">Ruta: <%= snapshot.rootPath %></p>
+                </article>
+              <% } %>
+            </div>
+          </article>
+
+          <article class="summary-card dashboard-card">
+            <div class="panel-head">
+              <div>
+                <p class="summary-kicker">Prompts</p>
+                <h3>Historial de prompts usados</h3>
+              </div>
+            </div>
+            <div class="prompt-history-list">
+              <% if (!detail.promptHistory.length) { %>
+                <div class="empty-state compact-empty">Todavia no hay prompts registrados.</div>
+              <% } %>
+              <% for (const entry of detail.promptHistory.slice(0, 12)) { %>
+                <details class="prompt-history-card">
+                  <summary>
+                    <span><strong><%= entry.productId %></strong> · <%= entry.poseId %></span>
+                    <span class="muted"><%= entry.source %> · <%= new Date(entry.createdAt).toLocaleString("es-MX") %></span>
+                  </summary>
+                  <div class="prompt-history-body">
+                    <div class="prompt-shell compact-shell">
+                      <label>System</label>
+                      <textarea readonly rows="5"><%= entry.systemPrompt %></textarea>
+                    </div>
+                    <div class="prompt-shell compact-shell">
+                      <label>User</label>
+                      <textarea readonly rows="5"><%= entry.userPrompt %></textarea>
+                    </div>
+                    <div class="prompt-shell compact-shell">
+                      <label>Final</label>
+                      <textarea readonly rows="7"><%= entry.finalPrompt %></textarea>
+                    </div>
+                  </div>
+                </details>
+              <% } %>
+            </div>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      window.__PAGE_MODEL__ = {
+        page: "batch-detail"
+      };
+    </script>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>

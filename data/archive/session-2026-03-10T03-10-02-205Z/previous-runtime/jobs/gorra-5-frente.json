@@ -1,0 +1,162 @@
+{
+  "productId": "gorra-5-frente",
+  "sourceName": "gorra-5-frente",
+  "garmentImages": [
+    "C:\\Users\\Claud\\Documents\\Codex Proyects\\Auto2\\data\\archive\\session-2026-03-10T00-31-24-631Z\\input\\garments\\gorra-5-frente.png"
+  ],
+  "selectedModel": "C:\\Users\\Claud\\Documents\\Codex Proyects\\Auto2\\data\\archive\\session-2026-03-10T00-31-24-631Z\\input\\models\\pose-1.png",
+  "promptOverrides": {
+    "generalPrompt": "",
+    "posePrompts": {}
+  },
+  "category": "parte_alta",
+  "poses": [
+    {
+      "poseId": "pose1",
+      "variantCount": 1,
+      "status": "ready",
+      "regenerateCount": 0,
+      "promptOverride": "",
+      "lastPromptUsed": "System instructions:\n- Use the selected model image as the person identity reference.\n- Replace the model's current clothing with the garment shown in the attached garment reference image(s).\n- Follow the attached pose reference image as the target pose, framing and body direction.\n- Keep the garment faithful to the reference images in color, shape, logo placement and visible details.\n- Generate one final photorealistic image.",
+      "promptPreview": "System instructions:\n- Use the selected model image as the person identity reference.\n- Replace the model's current clothing with the garment shown in the attached garment reference image(s).\n- Follow the attached pose reference image as the target pose, framing and body direction.\n- Keep the garment faithful to the reference images in color, shape, logo placement and visible details.\n- Generate one final photorealistic image."
+    },
+    {
+      "poseId": "pose2",
+      "variantCount": 1,
+      "status": "ready",
+      "regenerateCount": 0,
+      "promptOverride": "",
+      "lastPromptUsed": "System instructions:\n- Use the selected model image as the person identity reference.\n- Replace the model's current clothing with the garment shown in the attached garment reference image(s).\n- Follow the attached pose reference image as the target pose, framing and body direction.\n- Keep the garment faithful to the reference images in color, shape, logo placement and visible details.\n- Generate one final photorealistic image.",
+      "promptPreview": "System instructions:\n- Use the selected model image as the person identity reference.\n- Replace the model's current clothing with the garment shown in the attached garment reference image(s).\n- Follow the attached pose reference image as the target pose, framing and body direction.\n- Keep the garment faithful to the reference images in color, shape, logo placement and visible details.\n- Generate one final photorealistic image."
+    },
+    {
+      "poseId": "pose3",
+      "variantCount": 1,
+      "status": "ready",
+      "regenerateCount": 0,
+      "promptOverride": "",
+      "lastPromptUsed": "System instructions:\n- Use the selected model image as the person identity reference.\n- Replace the model's current clothing with the garment shown in the attached garment reference image(s).\n- Follow the attached pose reference image as the target pose, framing and body direction.\n- Keep the garment faithful to the reference images in color, shape, logo placement and visible details.\n- Generate one final photorealistic image.",
+      "promptPreview": "System instructions:\n- Use the selected model image as the person identity reference.\n- Replace the model's current clothing with the garment shown in the attached garment reference image(s).\n- Follow the attached pose reference image as the target pose, framing and body direction.\n- Keep the garment faithful to the reference images in color, shape, logo placement and visible details.\n- Generate one final photorealistic image."
+    },
+    {
+      "poseId": "pose4",
+      "variantCount": 1,
+      "status": "ready",
+      "regenerateCount": 0,
+      "promptOverride": "",
+      "lastPromptUsed": "System instructions:\n- Use the selected model image as the person identity reference.\n- Replace the model's current clothing with the garment shown in the attached garment reference image(s).\n- Follow the attached pose reference image as the target pose, framing and body direction.\n- Keep the garment faithful to the reference images in color, shape, logo placement and visible details.\n- Generate one final photorealistic image.",
+      "promptPreview": "System instructions:\n- Use the selected model image as the person identity reference.\n- Replace the model's current clothing with the garment shown in the attached garment reference image(s).\n- Follow the attached pose reference image as the target pose, framing and body direction.\n- Keep the garment faithful to the reference images in color, shape, logo placement and visible details.\n- Generate one final photorealistic image."
+    }
+  ],
+  "outputs": [
+    {
+      "outputId": "gorra-5-frente-pose1-a-1",
+      "poseId": "pose1",
+      "variantKey": "a",
+      "fileName": "gorra-5-frente-pose1-a-1.jpg",
+      "filePath": "C:\\Users\\Claud\\Documents\\Codex Proyects\\Auto2\\data\\output\\gorra-5-frente\\gorra-5-frente-pose1-a-1.jpg",
+      "metadataPath": "C:\\Users\\Claud\\Documents\\Codex Proyects\\Auto2\\data\\output\\gorra-5-frente\\gorra-5-frente-pose1-a-1.json",
+      "status": "ready",
+      "metadata": {
+        "prompt": "System instructions:\n- Use the selected model image as the person identity reference.\n- Replace the model's current clothing with the garment shown in the attached garment reference image(s).\n- Follow the attached pose reference image as the target pose, framing and body direction.\n- Keep the garment faithful to the reference images in color, shape, logo placement and visible details.\n- Generate one final photorealistic image.",
+        "poseId": "pose1",
+        "variantKey": "a",
+        "provider": "fal-ai",
+        "model": "fal-ai/nano-banana/edit",
+        "endpoint": "fal.subscribe",
+        "timestamp": "2026-03-10T00:31:46.897Z",
+        "responseId": "9358a320-53c1-4b96-893c-fa9f85c7451f",
+        "notes": [
+          "Salida adaptada localmente a 1000x1000 JPG con densidad 72 ppp.",
+          "El MVP no garantiza Adobe RGB; se guarda en JPEG estandar generado con Sharp."
+        ]
+      }
+    },
+    {
+      "outputId": "gorra-5-frente-pose2-a-1",
+      "poseId": "pose2",
+      "variantKey": "a",
+      "fileName": "gorra-5-frente-pose2-a-1.jpg",
+      "filePath": "C:\\Users\\Claud\\Documents\\Codex Proyects\\Auto2\\data\\output\\gorra-5-frente\\gorra-5-frente-pose2-a-1.jpg",
+      "metadataPath": "C:\\Users\\Claud\\Documents\\Codex Proyects\\Auto2\\data\\output\\gorra-5-frente\\gorra-5-frente-pose2-a-1.json",
+      "status": "ready",
+      "metadata": {
+        "prompt": "System instructions:\n- Use the selected model image as the person identity reference.\n- Replace the model's current clothing with the garment shown in the attached garment reference image(s).\n- Follow the attached pose reference image as the target pose, framing and body direction.\n- Keep the garment faithful to the reference images in color, shape, logo placement and visible details.\n- Generate one final photorealistic image.",
+        "poseId": "pose2",
+        "variantKey": "a",
+        "provider": "fal-ai",
+        "model": "fal-ai/nano-banana/edit",
+        "endpoint": "fal.subscribe",
+        "timestamp": "2026-03-10T00:32:08.149Z",
+        "responseId": "7fa41ed7-5510-48c2-b3db-5eb2c262ea16",
+        "notes": [
+          "Salida adaptada localmente a 1000x1000 JPG con densidad 72 ppp.",
+          "El MVP no garantiza Adobe RGB; se guarda en JPEG estandar generado con Sharp."
+        ]
+      }
+    },
+    {
+      "outputId": "gorra-5-frente-pose3-a-1",
+      "poseId": "pose3",
+      "variantKey": "a",
+      "fileName": "gorra-5-frente-pose3-a-1.jpg",
+      "filePath": "C:\\Users\\Claud\\Documents\\Codex Proyects\\Auto2\\data\\output\\gorra-5-frente\\gorra-5-frente-pose3-a-1.jpg",
+      "metadataPath": "C:\\Users\\Claud\\Documents\\Codex Proyects\\Auto2\\data\\output\\gorra-5-frente\\gorra-5-frente-pose3-a-1.json",
+      "status": "ready",
+      "metadata": {
+        "prompt": "System instructions:\n- Use the selected model image as the person identity reference.\n- Replace the model's current clothing with the garment shown in the attached garment reference image(s).\n- Follow the attached pose reference image as the target pose, framing and body direction.\n- Keep the garment faithful to the reference images in color, shape, logo placement and visible details.\n- Generate one final photorealistic image.",
+        "poseId": "pose3",
+        "variantKey": "a",
+        "provider": "fal-ai",
+        "model": "fal-ai/nano-banana/edit",
+        "endpoint": "fal.subscribe",
+        "timestamp": "2026-03-10T00:32:27.057Z",
+        "responseId": "4a998e42-4030-4ad8-a8ab-f1dc0ae0d0a1",
+        "notes": [
+          "Salida adaptada localmente a 1000x1000 JPG con densidad 72 ppp.",
+          "El MVP no garantiza Adobe RGB; se guarda en JPEG estandar generado con Sharp."
+        ]
+      }
+    },
+    {
+      "outputId": "gorra-5-frente-pose4-a-1",
+      "poseId": "pose4",
+      "variantKey": "a",
+      "fileName": "gorra-5-frente-pose4-a-1.jpg",
+      "filePath": "C:\\Users\\Claud\\Documents\\Codex Proyects\\Auto2\\data\\output\\gorra-5-frente\\gorra-5-frente-pose4-a-1.jpg",
+      "metadataPath": "C:\\Users\\Claud\\Documents\\Codex Proyects\\Auto2\\data\\output\\gorra-5-frente\\gorra-5-frente-pose4-a-1.json",
+      "status": "ready",
+      "metadata": {
+        "prompt": "System instructions:\n- Use the selected model image as the person identity reference.\n- Replace the model's current clothing with the garment shown in the attached garment reference image(s).\n- Follow the attached pose reference image as the target pose, framing and body direction.\n- Keep the garment faithful to the reference images in color, shape, logo placement and visible details.\n- Generate one final photorealistic image.",
+        "poseId": "pose4",
+        "variantKey": "a",
+        "provider": "fal-ai",
+        "model": "fal-ai/nano-banana/edit",
+        "endpoint": "fal.subscribe",
+        "timestamp": "2026-03-10T00:32:42.764Z",
+        "responseId": "e01f997c-52cd-4660-a695-e6f425d7a628",
+        "notes": [
+          "Salida adaptada localmente a 1000x1000 JPG con densidad 72 ppp.",
+          "El MVP no garantiza Adobe RGB; se guarda en JPEG estandar generado con Sharp."
+        ]
+      }
+    }
+  ],
+  "approved": {
+    "pose1": [
+      "gorra-5-frente-pose1-a-1"
+    ],
+    "pose2": [
+      "gorra-5-frente-pose2-a-1"
+    ],
+    "pose3": [
+      "gorra-5-frente-pose3-a-1"
+    ],
+    "pose4": [
+      "gorra-5-frente-pose4-a-1"
+    ]
+  },
+  "status": "in_review",
+  "createdAt": "2026-03-10T00:31:24.646Z",
+  "updatedAt": "2026-03-10T03:08:10.771Z"
+}

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Batches</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body class="dashboard-body" data-page="batches">
+    <div class="dashboard-layout">
+      <%- include("partials/dashboard-sidebar", {
+        activeMenu,
+        isSidebarCollapsed: false,
+        product: null,
+        allProducts: [],
+        basename,
+        fileUrl,
+        explicitSelections: 0
+      }) %>
+
+      <main class="dashboard-content">
+        <section class="topbar app-topbar">
+          <div class="topbar-title">
+            <p class="eyebrow">History</p>
+            <h2>Batches</h2>
+            <p class="muted">Cada batch guarda inputs, jobs, outputs, aprobadas, prompts, settings del provider y eventos de trabajo para poder abrirlo o continuarlo despues.</p>
+          </div>
+        </section>
+
+        <section class="summary-card dashboard-card batch-filter-shell">
+          <form class="batch-filter-form" method="get" action="/batches">
+            <div class="prompt-shell compact-shell">
+              <label for="batch-search">Buscar</label>
+              <input id="batch-search" class="wizard-input" type="search" name="q" value="<%= filters.q %>" placeholder="Nombre, id o cliente" />
+            </div>
+            <div class="prompt-shell compact-shell">
+              <label for="batch-status-filter">Estado</label>
+              <select id="batch-status-filter" class="wizard-select" name="status">
+                <% for (const option of ["all", "draft", "running", "in_review", "paused", "completed", "archived", "error"]) { %>
+                  <option value="<%= option %>" <%= filters.status === option ? "selected" : "" %>><%= option %></option>
+                <% } %>
+              </select>
+            </div>
+            <div class="prompt-shell compact-shell">
+              <label for="batch-client-filter">Cliente</label>
+              <select id="batch-client-filter" class="wizard-select" name="clientId">
+                <option value="">Todos</option>
+                <% for (const client of clients) { %>
+                  <option value="<%= client.clientId %>" <%= filters.clientId === client.clientId ? "selected" : "" %>><%= client.name %></option>
+                <% } %>
+              </select>
+            </div>
+            <div class="batch-filter-actions">
+              <button type="submit">Filtrar</button>
+              <a href="/batches" class="secondary">Limpiar</a>
+            </div>
+          </form>
+        </section>
+
+        <section class="dashboard-grid batches-grid">
+          <% if (!batches.length) { %>
+            <div class="empty-state">Aun no hay batches guardados.</div>
+          <% } %>
+
+          <% for (const batch of batches) { %>
+            <article class="summary-card dashboard-card batch-card">
+              <div class="batch-card-head">
+                <div>
+                  <p class="summary-kicker"><%= batch.active ? "Activo" : "Batch" %></p>
+                  <h3><%= batch.name %></h3>
+                </div>
+                <span class="status <%= batch.status === "running" ? "generating" : batch.status === "completed" ? "approved" : batch.status === "paused" ? "pending" : batch.status %>"><%= batch.status %></span>
+              </div>
+
+              <div class="batch-stats">
+                <p><strong>Cliente</strong><span><%= batch.clientName || "Sin cliente" %></span></p>
+                <p><strong>Creado</strong><span><%= new Date(batch.createdAt).toLocaleString("es-MX") %></span></p>
+                <p><strong>Modelo</strong><span><%= batch.promptConfig.providerSettings.modelId %></span></p>
+                <p><strong>Productos</strong><span><%= batch.counts.products %></span></p>
+                <p><strong>Outputs</strong><span><%= batch.counts.outputs %></span></p>
+                <p><strong>Aprobados</strong><span><%= batch.counts.approved %></span></p>
+                <p><strong>Errores</strong><span><%= batch.counts.error %></span></p>
+                <p><strong>Snapshots</strong><span><%= batch.snapshots.length %></span></p>
+              </div>
+
+              <div class="batch-card-actions">
+                <a href="/batches/<%= batch.batchId %>" class="secondary">Detalle</a>
+                <button type="button" class="secondary batch-action-button" data-action="open" data-batch-id="<%= batch.batchId %>">Abrir</button>
+                <button type="button" class="secondary batch-action-button" data-action="continue" data-batch-id="<%= batch.batchId %>">Continuar</button>
+                <button type="button" class="secondary batch-action-button" data-action="duplicate" data-batch-id="<%= batch.batchId %>">Duplicar</button>
+                <button type="button" class="secondary batch-action-button" data-action="archive" data-batch-id="<%= batch.batchId %>">Archivar</button>
+                <button type="button" class="secondary batch-action-button batch-delete-button" data-action="delete" data-batch-id="<%= batch.batchId %>">Eliminar</button>
+              </div>
+            </article>
+          <% } %>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      window.__PAGE_MODEL__ = {
+        page: "batches"
+      };
+    </script>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>
