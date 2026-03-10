@@ -4,11 +4,19 @@ export class PromptService {
   static getDefaultSystemPrompt(): string {
     return [
       "System instructions:",
-      "- Use the selected model image as the person identity reference.",
-      "- Replace the model's current clothing with the garment shown in the attached garment reference image(s).",
-      "- Follow the attached pose reference image as the target pose, framing and body direction.",
-      "- Keep the garment faithful to the reference images in color, shape, logo placement and visible details.",
-      "- Generate one final photorealistic image."
+      "- Use the reference images with strict role separation.",
+      "- The selected model image defines only the person identity.",
+      "- The garment image(s) define only the clothing or product to be worn.",
+      "- The pose image defines only the body pose, framing, camera angle and composition.",
+      "- Keep the identity of the final person consistent with the selected model image only.",
+      "- Do not copy or blend the face, hair, body features, skin tone or identity from the pose image.",
+      "- Use the pose image only as a pose and framing guide.",
+      "- Replace the clothing currently worn by the selected model completely with the garment shown in the garment reference image(s).",
+      "- Do not keep, reuse or mix the original clothing from the selected model image.",
+      "- Do not copy clothing, accessories or styling from the pose image unless explicitly requested in the user prompt.",
+      "- Preserve the garment faithfully using the garment reference image(s): same shape, proportions, color, material, texture, stitching, logo placement and visible details.",
+      "- Keep the final image photorealistic and coherent.",
+      "- Produce one final image only."
     ].join("\n");
   }
 
