@@ -1,0 +1,14 @@
+{
+  "prompt": "System instructions:\n- Use the reference images with strict role separation.\n- The selected model image defines only the person identity.\n- The garment image(s) define only the clothing or product to be worn.\n- The pose image defines only the body pose, framing, camera angle and composition.\n- Keep the identity of the final person consistent with the selected model image only.\n- Do not copy or blend the face, hair, body features, skin tone or identity from the pose image.\n- Use the pose image only as a pose and framing guide.\n- Replace the clothing currently worn by the selected model completely with the garment shown in the garment reference image(s).\n- Do not keep, reuse or mix the original clothing from the selected model image.\n- Do not copy clothing, accessories or styling from the pose image unless explicitly requested in the user prompt.\n- Preserve the garment faithfully using the garment reference image(s): same shape, proportions, color, material, texture, stitching, logo placement and visible details.\n- Keep the final image photorealistic and coherent.\n- Produce one final image only.",
+  "poseId": "pose1",
+  "variantKey": "a",
+  "provider": "fal-ai",
+  "model": "fal-ai/nano-banana/edit",
+  "endpoint": "fal.subscribe",
+  "timestamp": "2026-03-10T17:08:00.615Z",
+  "responseId": "a8483db7-0d29-41fa-8e81-e4f6e442f711",
+  "notes": [
+    "Salida adaptada localmente a 1000x1000 JPG con densidad 72 ppp.",
+    "El MVP no garantiza Adobe RGB; se guarda en JPEG estandar generado con Sharp."
+  ]
+}
