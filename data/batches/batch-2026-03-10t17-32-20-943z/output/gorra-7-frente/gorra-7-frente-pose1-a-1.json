@@ -1,0 +1,14 @@
+{
+  "prompt": "Use the reference images with strict role separation.\n\nImage order in the request:\n1. The first image is always the selected model image.\n2. The middle image or images are always the garment reference image(s).\n3. The last image is always the pose reference image.\n\nReference priority:\n1. The selected model image defines only the person identity.\n2. The garment image(s) define only the clothing/product to be worn.\n3. The pose image defines only the body pose, framing, camera angle and composition.\n\nStrict instructions:\n- Read the images using that exact order and role assignment.\n- Keep the identity of the final person consistent with the selected model image only.\n- Use the face, hair, body features, skin tone and identity from the first image only.\n- Do not copy or blend the face, hair, body features, skin tone or identity from the pose image.\n- Use the pose image only as a pose and framing guide.\n- Use the last image only for pose, framing, camera angle and body direction.\n- Do not use the last image as identity, face, hair, skin tone, clothing or styling reference.\n- Replace the clothing currently worn by the selected model completely with the garment shown in the garment reference image(s).\n- Use the garment reference image(s) only for the clothing/product and not for person identity.\n- Apply the garment from the middle image or images to the person from the first image.\n- Do not keep, reuse or mix the original clothing from the selected model image.\n- Do not copy clothing, accessories or styling from the pose image unless explicitly requested in the user prompt.\n- Preserve the garment faithfully using the garment reference image(s): same shape, proportions, color, material, texture, stitching, logo placement and visible details.\n- If any reference conflicts with another, identity must come from the first image, clothing must come from the garment image(s), and pose must come from the last image.\n- Do not merge or average identity between references.\n- Do not keep the original pose from the first image unless it matches the last image.\n- Do not keep the original clothing from the first image under any circumstance.\n- Keep the final image photorealistic and coherent.\n- Produce one final image only.\n\nWhat to ignore from each reference:\n- Ignore clothing from the selected model image.\n- Ignore identity from the pose image.\n- Ignore pose from the selected model image.\n- Ignore any clothing worn in the pose image.",
+  "poseId": "pose1",
+  "variantKey": "a",
+  "provider": "fal-ai",
+  "model": "fal-ai/nano-banana/edit",
+  "endpoint": "fal.subscribe",
+  "timestamp": "2026-03-10T17:32:45.694Z",
+  "responseId": "efceea8a-3bf8-4846-9476-8119e6cb2b16",
+  "notes": [
+    "Salida adaptada localmente a 1000x1000 JPG con densidad 72 ppp.",
+    "El MVP no garantiza Adobe RGB; se guarda en JPEG estandar generado con Sharp."
+  ]
+}
