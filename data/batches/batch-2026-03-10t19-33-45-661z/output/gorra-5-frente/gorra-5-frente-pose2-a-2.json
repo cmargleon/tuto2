@@ -1,0 +1,14 @@
+{
+  "prompt": "Use the reference images with strict role separation.\n\nImage order in the request:\n1. The first image or images are always the garment reference image(s).\n2. The last image is always the pose reference image.\n\nReference priority:\n1. The garment image(s) define only the clothing/product to be worn.\n2. The pose image defines the person identity, body pose, framing, camera angle and composition.\n\nStrict instructions:\n- Read the images using that exact order and role assignment.\n- Keep exactly one person in the final image.\n- The final person must be the same person shown in the pose image.\n- Use the last image as the only identity reference for the person.\n- Use the last image as the only source for face, hair, body features, skin tone, pose, framing, camera angle and body direction.\n- Do not add a second person, duplicate person, background person or blended person.\n- Replace the clothing currently worn by the person in the pose image completely with the garment shown in the garment reference image(s).\n- Use the garment reference image(s) only for the clothing/product and not for identity or pose.\n- Apply the garment from the first image or images to the person from the last image.\n- Do not keep, reuse or mix the original clothing from the pose image.\n- Do not invent extra garments, layers, accessories or alternate outfits unless explicitly requested in the user prompt.\n- Preserve the garment faithfully using the garment reference image(s): same shape, proportions, color, material, texture, stitching, logo placement and visible details.\n- If any reference conflicts with another, clothing must come from the garment image(s), and identity, pose and composition must come from the last image.\n- Do not merge or average identity between references.\n- Do not change the person identity from the pose image.\n- Keep the final image photorealistic and coherent.\n- Produce one final image only.\n\nWhat to ignore from each reference:\n- Ignore identity, face, hair and pose from the garment reference image(s).\n- Ignore any clothing worn in the pose image.",
+  "poseId": "pose2",
+  "variantKey": "a",
+  "provider": "fal-ai",
+  "model": "fal-ai/bytedance/seedream/v4.5/edit",
+  "endpoint": "fal.subscribe",
+  "timestamp": "2026-03-10T19:36:21.620Z",
+  "responseId": "6f863ee1-9abb-4cf9-8b2c-fb89d3b82bd3",
+  "notes": [
+    "Salida adaptada localmente a 1000x1000 JPG con densidad 72 ppp.",
+    "El MVP no garantiza Adobe RGB; se guarda en JPEG estandar generado con Sharp."
+  ]
+}

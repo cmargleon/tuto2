@@ -1,4 +1,4 @@
-import type { BatchPromptConfig, GenerateVariantsInput, ProductCategory } from "../../shared/types";
+import type { BatchBackgroundConfig, BatchPromptConfig, GenerateVariantsInput, ProductCategory } from "../../shared/types";
 
 export class PromptService {
   static getDefaultSystemPrompt(): string {
@@ -6,41 +6,41 @@ export class PromptService {
       "Use the reference images with strict role separation.",
       "",
       "Image order in the request:",
-      "1. The first image is always the selected model image.",
+      "1. The first image or images are always additional selected model reference image(s).",
       "2. The middle image or images are always the garment reference image(s).",
-      "3. The last image is always the pose reference image.",
+      "3. The last image is always the selected model image that also defines the target pose.",
       "",
       "Reference priority:",
-      "1. The selected model image defines only the person identity.",
+      "1. The selected model image(s) define the person identity.",
       "2. The garment image(s) define only the clothing/product to be worn.",
-      "3. The pose image defines only the body pose, framing, camera angle and composition.",
+      "3. The last selected model image defines the target pose, framing, camera angle and composition.",
       "",
       "Strict instructions:",
       "- Read the images using that exact order and role assignment.",
-      "- Keep the identity of the final person consistent with the selected model image only.",
-      "- Use the face, hair, body features, skin tone and identity from the first image only.",
-      "- Do not copy or blend the face, hair, body features, skin tone or identity from the pose image.",
-      "- Use the pose image only as a pose and framing guide.",
-      "- Use the last image only for pose, framing, camera angle and body direction.",
-      "- Do not use the last image as identity, face, hair, skin tone, clothing or styling reference.",
-      "- Replace the clothing currently worn by the selected model completely with the garment shown in the garment reference image(s).",
-      "- Use the garment reference image(s) only for the clothing/product and not for person identity.",
-      "- Apply the garment from the middle image or images to the person from the first image.",
+      "- Keep exactly one person in the final image.",
+      "- The final person must be the same person shown in the selected model image(s).",
+      "- Use the first image or images as the only identity reference for the person.",
+      "- Use the first image or images as the only source for face, hair, body features and skin tone.",
+      "- Do not add a second person, duplicate person, background person or blended person.",
+      "- Use the last image for pose, framing, camera angle and body direction while keeping the same person identity.",
+      "- The last image is the same model person shown in the selected model reference set and must not introduce a new person.",
+      "- Replace the clothing currently worn by the person completely with the garment shown in the garment reference image(s).",
+      "- Use the garment reference image(s) only for the clothing/product and not for identity or pose.",
+      "- Apply the garment from the middle image or images to the person from the first image or images.",
       "- Do not keep, reuse or mix the original clothing from the selected model image.",
-      "- Do not copy clothing, accessories or styling from the pose image unless explicitly requested in the user prompt.",
+      "- Do not keep, reuse or mix the original clothing from the pose image.",
+      "- Do not invent extra garments, layers, accessories or alternate outfits unless explicitly requested in the user prompt.",
       "- Preserve the garment faithfully using the garment reference image(s): same shape, proportions, color, material, texture, stitching, logo placement and visible details.",
-      "- If any reference conflicts with another, identity must come from the first image, clothing must come from the garment image(s), and pose must come from the last image.",
+      "- If any reference conflicts with another, identity must come from the selected model image set, clothing must come from the middle garment image(s), and pose and composition must come from the last selected model image.",
       "- Do not merge or average identity between references.",
-      "- Do not keep the original pose from the first image unless it matches the last image.",
-      "- Do not keep the original clothing from the first image under any circumstance.",
+      "- Do not change the person identity from the selected model image(s).",
       "- Keep the final image photorealistic and coherent.",
       "- Produce one final image only.",
       "",
       "What to ignore from each reference:",
-      "- Ignore clothing from the selected model image.",
-      "- Ignore identity from the pose image.",
-      "- Ignore pose from the selected model image.",
-      "- Ignore any clothing worn in the pose image."
+      "- Ignore clothing from the selected model image(s).",
+      "- Ignore identity, face, hair and pose from the garment reference image(s).",
+      "- Ignore any clothing worn in the last selected model image."
     ].join("\n");
   }
 
@@ -52,7 +52,6 @@ export class PromptService {
     _category: ProductCategory,
     poseId: string,
     _productId: string,
-    _selectedModelFile: string,
     promptOverride?: string,
     options?: {
       batchPromptConfig?: BatchPromptConfig;
@@ -63,7 +62,22 @@ export class PromptService {
     const batchPromptConfig = options?.batchPromptConfig ?? {
       systemPrompt: "",
       generalPrompt: "",
-      posePrompts: {},
+      posePrompts: {} as Record<string, string>,
+      backgroundConfig: {
+        mode: "white",
+        bokehIntensity: 45,
+        lightingStyle: "clear_soft_daylight",
+        scene: "none",
+        dominantColor: "white",
+        backgroundProminence: "minimal",
+        contrast: "soft",
+        realismLevel: "catalogo_realista",
+        subjectSeparation: "strong",
+        noPeople: true,
+        noProps: true,
+        noText: true,
+        customInstructions: ""
+      },
       providerSettings: {
         modelId: "",
         imageSize: "square_hd",
@@ -71,7 +85,7 @@ export class PromptService {
         syncMode: false,
         enableSafetyChecker: true
       }
-    };
+    } satisfies BatchPromptConfig;
     const generalPrompt = options?.productGeneralPrompt?.trim() || batchPromptConfig.generalPrompt?.trim();
     const poseExtraPrompt = options?.productPosePrompt?.trim() || batchPromptConfig.posePrompts?.[poseId]?.trim();
     const parts = [generalPrompt, poseExtraPrompt, promptOverride?.trim()].filter((value): value is string => Boolean(value && value.trim()));
@@ -80,7 +94,6 @@ export class PromptService {
 
   buildProviderPrompt(
     base: Omit<GenerateVariantsInput, "prompt"> & {
-      selectedModelFile: string;
       promptOverride?: string;
       batchPromptConfig?: BatchPromptConfig;
       productGeneralPrompt?: string;
@@ -91,7 +104,6 @@ export class PromptService {
       base.category,
       base.poseId,
       base.productId,
-      base.selectedModelFile,
       base.promptOverride,
       {
         batchPromptConfig: base.batchPromptConfig,
@@ -101,12 +113,21 @@ export class PromptService {
     );
 
     const hiddenDirectives = this.getResolvedSystemPrompt(base.batchPromptConfig);
+    const backgroundDirectives = this.buildBackgroundPrompt(base.batchPromptConfig?.backgroundConfig);
 
-    if (!userPrompt) {
+    if (!userPrompt && !backgroundDirectives) {
       return hiddenDirectives;
     }
 
-    return `${hiddenDirectives}\n\nUser prompt:\n${userPrompt}`;
+    const parts = [hiddenDirectives];
+    if (backgroundDirectives) {
+      parts.push(backgroundDirectives);
+    }
+    if (userPrompt) {
+      parts.push(`User prompt:\n${userPrompt}`);
+    }
+
+    return parts.join("\n\n");
   }
 
   buildEditorPrompt(
@@ -114,7 +135,6 @@ export class PromptService {
       poseId: string;
       category: ProductCategory;
       productId: string;
-      selectedModelFile: string;
       promptOverride?: string;
       batchPromptConfig?: BatchPromptConfig;
       productGeneralPrompt?: string;
@@ -126,6 +146,7 @@ export class PromptService {
       category: base.category,
       poseId: base.poseId,
       poseLabel: base.poseId,
+      modelImages: [],
       garmentImages: [],
       poseImage: {
         mimeType: "image/jpeg",
@@ -133,7 +154,6 @@ export class PromptService {
         name: "pose"
       },
       variantCount: 1,
-      selectedModelFile: base.selectedModelFile,
       promptOverride: base.promptOverride,
       batchPromptConfig: base.batchPromptConfig,
       productGeneralPrompt: base.productGeneralPrompt,
@@ -143,7 +163,6 @@ export class PromptService {
 
   buildProviderInput(
     base: Omit<GenerateVariantsInput, "prompt"> & {
-      selectedModelFile: string;
       promptOverride?: string;
       batchPromptConfig?: BatchPromptConfig;
       productGeneralPrompt?: string;
@@ -154,5 +173,134 @@ export class PromptService {
       ...base,
       prompt: this.buildProviderPrompt(base)
     };
+  }
+
+  buildBackgroundPrompt(backgroundConfig?: BatchBackgroundConfig): string {
+    if (!backgroundConfig) {
+      return "";
+    }
+
+    if (backgroundConfig.mode === "white") {
+      return [
+        "Background instructions:",
+        "- Background mode: solid white background.",
+        "- Background color: white.",
+        "- Keep the background fully clean and minimal.",
+        "- No scenery, environmental set pieces or lifestyle elements."
+      ].join("\n");
+    }
+
+    const lines = [
+      "Background instructions:",
+      `- Background mode: ${this.mapBackgroundMode(backgroundConfig.mode)}.`,
+      `- Scene: ${this.mapScene(backgroundConfig.scene)}.`,
+      `- Lighting: ${this.mapLighting(backgroundConfig.lightingStyle)}.`,
+      `- Bokeh intensity: ${Math.max(0, Math.min(100, Math.round(backgroundConfig.bokehIntensity)))}%.`,
+      `- Background prominence: ${this.mapProminence(backgroundConfig.backgroundProminence)}.`,
+      `- Contrast: ${this.mapContrast(backgroundConfig.contrast)}.`,
+      `- Realism level: ${this.mapRealism(backgroundConfig.realismLevel)}.`,
+      `- Subject separation: ${this.mapSeparation(backgroundConfig.subjectSeparation)}.`
+    ];
+
+    if (backgroundConfig.dominantColor?.trim()) {
+      lines.push(`- Dominant background color: ${backgroundConfig.dominantColor.trim()}.`);
+    }
+    if (backgroundConfig.noPeople) {
+      lines.push("- Do not place other people or silhouettes in the background.");
+    }
+    if (backgroundConfig.noProps) {
+      lines.push("- Avoid distracting props or set pieces that compete with the garment.");
+    }
+    if (backgroundConfig.noText) {
+      lines.push("- No text, signage, lettering or typography in the background.");
+    }
+    if (backgroundConfig.customInstructions?.trim()) {
+      lines.push(`- Extra background direction: ${backgroundConfig.customInstructions.trim()}`);
+    }
+
+    return lines.join("\n");
+  }
+
+  private mapBackgroundMode(mode: BatchBackgroundConfig["mode"]): string {
+    switch (mode) {
+      case "bokeh": return "bokeh";
+      case "studio": return "studio";
+      case "exterior_natural": return "natural exterior";
+      case "exterior_urbano": return "urban exterior";
+      case "interior_lifestyle": return "lifestyle interior";
+      case "custom": return "custom";
+      case "white":
+      default:
+        return "solid white";
+    }
+  }
+
+  private mapLighting(style: BatchBackgroundConfig["lightingStyle"]): string {
+    const mapping: Record<BatchBackgroundConfig["lightingStyle"], string> = {
+      clear_soft_daylight: "clear soft daylight",
+      warm_soft_daylight: "warm soft daylight",
+      cool_soft_daylight: "cool soft daylight",
+      studio_diffused: "diffused studio light",
+      high_key: "high-key studio light",
+      editorial: "editorial light",
+      dramatic: "dramatic light",
+      overcast_soft: "soft overcast light",
+      golden_hour: "golden hour light"
+    };
+    return mapping[style];
+  }
+
+  private mapScene(scene: BatchBackgroundConfig["scene"]): string {
+    const mapping: Record<BatchBackgroundConfig["scene"], string> = {
+      none: "none",
+      arquitectura_moderna: "modern architecture",
+      calle_limpia: "clean street",
+      terraza: "terrace",
+      fachada_neutra: "neutral facade",
+      bosque: "forest",
+      mar: "sea",
+      sendero: "trail",
+      jardin: "garden",
+      campo: "field",
+      living_minimalista: "minimalist living room",
+      estudio_creativo: "creative studio",
+      cafe_elegante: "elegant cafe",
+      vestidor: "dressing room",
+      gimnasio_premium: "premium gym",
+      papel_seamless: "seamless paper backdrop",
+      cemento_suave: "soft concrete backdrop"
+    };
+    return mapping[scene];
+  }
+
+  private mapProminence(value: BatchBackgroundConfig["backgroundProminence"]): string {
+    return {
+      minimal: "minimal and secondary",
+      medium: "balanced",
+      editorial: "editorial but still secondary to the subject"
+    }[value];
+  }
+
+  private mapContrast(value: BatchBackgroundConfig["contrast"]): string {
+    return {
+      soft: "soft",
+      medium: "medium",
+      high: "high"
+    }[value];
+  }
+
+  private mapRealism(value: BatchBackgroundConfig["realismLevel"]): string {
+    return {
+      catalogo_realista: "realistic catalog photography",
+      campana_lifestyle: "lifestyle campaign photography"
+    }[value];
+  }
+
+  private mapSeparation(value: BatchBackgroundConfig["subjectSeparation"]): string {
+    return {
+      standard: "standard",
+      strong: "strong",
+      maximum: "maximum"
+    }[value];
   }
 }

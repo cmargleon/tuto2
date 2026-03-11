@@ -24,9 +24,6 @@
       <main class="dashboard-content content">
         <%- include("partials/topbar-main") %>
         <%- include("partials/topbar-nav", { previous, next }) %>
-        <section class="review-actions-bar">
-          <button type="button" class="secondary" id="change-model-button">Cambiar modelo</button>
-        </section>
 
         <section class="poses">
           <% for (const pose of product.poses) { %>
@@ -36,62 +33,12 @@
       </main>
     </div>
 
-    <div class="modal-backdrop" id="change-model-modal" hidden>
-      <div class="modal-card">
-        <div class="modal-head">
-          <div>
-            <p class="summary-kicker">Rehacer producto</p>
-            <h3>Cambiar modelo y prompts</h3>
-          </div>
-          <button type="button" class="secondary" id="close-change-model-modal">Cerrar</button>
-        </div>
-        <div class="modal-content">
-          <section>
-            <label class="modal-label">Selecciona un nuevo modelo</label>
-            <p class="muted modal-helper">Haz clic sobre la foto de la persona que quieres usar para regenerar este producto.</p>
-            <div class="selected-model-preview" id="selected-model-preview" hidden>
-              <img id="selected-model-preview-image" alt="Modelo seleccionado" />
-              <div>
-                <p class="summary-kicker">Modelo activo</p>
-                <strong id="selected-model-preview-name"></strong>
-              </div>
-            </div>
-            <div class="model-picker-grid" id="model-picker-grid"></div>
-          </section>
-          <section>
-            <label class="modal-label" for="change-model-general-prompt">Prompt general del producto</label>
-            <div class="prompt-shell">
-              <textarea id="change-model-general-prompt" rows="6"><%= product.promptOverrides?.generalPrompt || '' %></textarea>
-            </div>
-          </section>
-          <section class="wizard-pose-prompts">
-            <% for (const pose of product.poses) { %>
-              <div class="prompt-shell">
-                <label for="change-model-<%= pose.poseId %>"><%= pose.poseId.toUpperCase() %></label>
-                <textarea
-                  id="change-model-<%= pose.poseId %>"
-                  class="change-model-pose-prompt"
-                  data-pose-id="<%= pose.poseId %>"
-                  rows="4"
-                ><%= product.promptOverrides?.posePrompts?.[pose.poseId] || '' %></textarea>
-              </div>
-            <% } %>
-          </section>
-        </div>
-        <div class="modal-footer">
-          <div id="change-model-feedback" class="flash" aria-live="polite"></div>
-          <button type="button" id="submit-change-model-button">Guardar y regenerar producto</button>
-        </div>
-      </div>
-    </div>
-
     <%- include("partials/floating-actions", { readyPoseCount }) %>
 
     <script>
       window.__PAGE_MODEL__ = {
         productId: "<%= product.productId %>",
         page: "home",
-        selectedModel: <%- JSON.stringify(product.selectedModel) %>,
         previous: <%- JSON.stringify(previous) %>,
         next: <%- JSON.stringify(next) %>,
         productStatus: "<%= product.status %>",

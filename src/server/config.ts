@@ -50,6 +50,7 @@ export const paths = {
   inputRoot: path.join(config.dataDir, "input"),
   garmentsDir: path.join(config.dataDir, "input", "garments"),
   modelsDir: path.join(config.dataDir, "input", "models"),
+  modelCatalogDir: path.join(config.dataDir, "models"),
   posesDir: path.join(config.dataDir, "input", "poses"),
   batchesDir: path.join(config.dataDir, "batches"),
   archiveDir: path.join(config.dataDir, "archive"),

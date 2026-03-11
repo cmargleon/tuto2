@@ -17,6 +17,7 @@ export class PageController {
       falModelOptions,
       defaultProviderSettings: defaultPromptConfig.providerSettings,
       clients: this.productService.listClients(),
+      availableModels: serializeModels(this.productService.listModels({ includeFree: true })),
       selectedClientId: readOptionalQuery(_request.query.clientId)
     });
   };
@@ -30,6 +31,7 @@ export class PageController {
       falModelOptions,
       defaultProviderSettings: defaultPromptConfig.providerSettings,
       clients: this.productService.listClients(),
+      availableModels: serializeModels(this.productService.listModels({ includeFree: true })),
       selectedClientId: readOptionalQuery(_request.query.clientId)
     });
   };
@@ -46,6 +48,16 @@ export class PageController {
         inReviewCount: allBatches.filter((batch) => batch.clientId === client.clientId && batch.status === "in_review").length,
         errorCount: allBatches.filter((batch) => batch.clientId === client.clientId && batch.status === "error").length
       })),
+      basename: path.basename,
+      fileUrl: (filePath: string) => `/files?path=${encodeURIComponent(path.relative(config.dataDir, filePath).replaceAll("\\", "/"))}`
+    });
+  };
+
+  models = async (_request: Request, response: Response): Promise<void> => {
+    response.render("models", {
+      activeMenu: "models",
+      clients: this.productService.listClients(),
+      models: this.productService.listModels({ includeFree: true }),
       basename: path.basename,
       fileUrl: (filePath: string) => `/files?path=${encodeURIComponent(path.relative(config.dataDir, filePath).replaceAll("\\", "/"))}`
     });
@@ -108,6 +120,7 @@ export class PageController {
         falModelOptions,
         defaultProviderSettings: defaultPromptConfig.providerSettings,
         clients: this.productService.listClients(),
+        availableModels: serializeModels(this.productService.listModels({ includeFree: true })),
         selectedClientId: ""
       });
       return;
@@ -135,4 +148,14 @@ export class PageController {
 
 function readOptionalQuery(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function serializeModels(models: ReturnType<ProductService["listModels"]>) {
+  return models.map((model) => ({
+    ...model,
+    photos: model.photos.map((photo) => ({
+      ...photo,
+      previewUrl: `/files?path=${encodeURIComponent(path.relative(config.dataDir, photo.filePath).replaceAll("\\", "/"))}`
+    }))
+  }));
 }

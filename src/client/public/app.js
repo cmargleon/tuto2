@@ -7,16 +7,20 @@
   const sidebarToggle = document.getElementById("sidebar-toggle");
   const dashboardLayout = document.querySelector(".dashboard-layout");
   const wizardForm = document.getElementById("generation-wizard");
-  const changeModelButton = document.getElementById("change-model-button");
-  const changeModelModal = document.getElementById("change-model-modal");
-  const closeChangeModelModalButton = document.getElementById("close-change-model-modal");
-  const submitChangeModelButton = document.getElementById("submit-change-model-button");
   const garmentPreviewPortal = document.getElementById("garment-preview-portal");
   const garmentPreviewImage = document.getElementById("garment-preview-image");
   const createClientModal = document.getElementById("create-client-modal");
   let pollingHandle = null;
   const promptDraftPrefix = `auto2:prompt-draft:v3:${pageModel.productId}:`;
   const sidebarStateKey = "auto2:sidebar-collapsed";
+  const modelAgeGroupLabels = {
+    nino: "Nino",
+    adolescente: "Adolescente",
+    adulto_joven: "Adulto joven",
+    adulto: "Adulto",
+    jubilado: "Jubilado",
+    anciano: "Anciano"
+  };
 
   function applySidebarState(collapsed) {
     if (!sidebar || !dashboardLayout) {
@@ -55,15 +59,6 @@
     }
     wizardFeedback.textContent = message;
     wizardFeedback.style.color = isError ? "#fca5a5" : "#86efac";
-  }
-
-  function setChangeModelFeedback(message, isError) {
-    const feedback = document.getElementById("change-model-feedback");
-    if (!feedback) {
-      return;
-    }
-    feedback.textContent = message;
-    feedback.style.color = isError ? "#fca5a5" : "#86efac";
   }
 
   function setCreateClientFeedback(message, isError) {
@@ -111,9 +106,10 @@
 
     const state = {
       garments: [],
-      models: [],
-      poses: [],
-      step: 1
+      selectedModelId: "",
+      selectedModelPhotoIds: [],
+      step: 1,
+      availableModels: Array.isArray(pageModel.availableModels) ? pageModel.availableModels : []
     };
 
     const stepButtons = Array.from(document.querySelectorAll(".wizard-step"));
@@ -123,6 +119,26 @@
     const submitButton = document.getElementById("wizard-submit-button");
     const imageSizeSelect = document.getElementById("wizard-image-size");
     const customSizeGrid = document.getElementById("wizard-custom-size-grid");
+    const backgroundModeSelect = document.getElementById("wizard-background-mode");
+    const backgroundBokehInput = document.getElementById("wizard-background-bokeh");
+    const backgroundBokehValue = document.getElementById("wizard-background-bokeh-value");
+    const clientField = document.getElementById("wizard-client-id");
+    const modelCatalogNode = document.getElementById("wizard-model-catalog");
+    const selectedModelEmptyNode = document.getElementById("wizard-selected-model-empty");
+    const selectedModelShell = document.getElementById("wizard-selected-model-shell");
+    const selectedModelName = document.getElementById("wizard-selected-model-name");
+    const selectedModelMeta = document.getElementById("wizard-selected-model-meta");
+    const modelPhotoPicker = document.getElementById("wizard-model-photo-picker");
+
+    function getFilteredModels() {
+      const selectedClientId = clientField?.value || "";
+      return state.availableModels.filter((model) => {
+        if (!selectedClientId) {
+          return true;
+        }
+        return !model.clientId || model.clientId === selectedClientId;
+      });
+    }
 
     function renderProviderSettingsState() {
       if (!imageSizeSelect || !customSizeGrid) {
@@ -132,6 +148,17 @@
       renderWizardLiveSummary(summarizeGarments(state.garments));
     }
 
+    function renderBackgroundState() {
+      const mode = backgroundModeSelect?.value || "white";
+      document.querySelectorAll(".wizard-background-advanced").forEach((node) => {
+        const hideFor = node.getAttribute("data-background-hide-for");
+        node.hidden = hideFor === mode;
+      });
+      if (backgroundBokehValue && backgroundBokehInput) {
+        backgroundBokehValue.textContent = backgroundBokehInput.value || "0";
+      }
+    }
+
     function renderWizardStep() {
       stepButtons.forEach((button) => {
         button.classList.toggle("active", Number(button.getAttribute("data-step")) === state.step);
@@ -139,16 +166,16 @@
       stepPanels.forEach((panel) => {
         panel.classList.toggle("active", Number(panel.getAttribute("data-step-panel")) === state.step);
       });
-      if (prevButton) {
-        prevButton.disabled = state.step === 1;
+        if (prevButton) {
+          prevButton.disabled = state.step === 1;
+        }
+        if (nextButton) {
+          nextButton.style.display = state.step === 5 ? "none" : "inline-flex";
+        }
+        if (submitButton) {
+          submitButton.style.display = state.step === 5 ? "inline-flex" : "none";
+        }
       }
-      if (nextButton) {
-        nextButton.style.display = state.step === 5 ? "none" : "inline-flex";
-      }
-      if (submitButton) {
-        submitButton.style.display = state.step === 5 ? "inline-flex" : "none";
-      }
-    }
 
     function renderSummary(targetId, items, formatter) {
       const target = document.getElementById(targetId);
@@ -162,9 +189,9 @@
       target.innerHTML = items.map((item, index) => formatter(item, index)).join("");
     }
 
-    function renderWizardState() {
-      const garmentGroups = summarizeGarments(state.garments);
-      renderSummary("garments-summary", garmentGroups, (group) => `
+      function renderWizardState() {
+        const garmentGroups = summarizeGarments(state.garments);
+        renderSummary("garments-summary", garmentGroups, (group) => `
         <article class="wizard-summary-card">
           <div class="wizard-summary-thumb-grid">
             ${group.items.slice(0, 4).map((item) => `<img src="${escapeHtml(item.previewUrl)}" alt="${escapeHtml(item.name)}" />`).join("")}
@@ -173,34 +200,17 @@
           <p class="muted">${group.count} imagen(es)</p>
         </article>
       `);
-      renderSummary("models-summary", state.models, (item) => `
-        <article class="wizard-summary-card">
-          <div class="wizard-summary-thumb-grid">
-            <img src="${escapeHtml(item.previewUrl)}" alt="${escapeHtml(item.name)}" />
-          </div>
-          <strong>${escapeHtml(item.name)}</strong>
-        </article>
-      `);
-      renderSummary("poses-summary", state.poses, (item, index) => `
-        <article class="wizard-summary-card">
-          <div class="wizard-summary-thumb-grid">
-            <img src="${escapeHtml(item.previewUrl)}" alt="${escapeHtml(item.name)}" />
-          </div>
-          <strong>Pose ${index + 1}</strong>
-          <p class="muted">${escapeHtml(item.name)}</p>
-        </article>
-      `);
-      renderWizardLiveSummary(garmentGroups);
-    }
+        renderModelCatalog();
+        renderSelectedModel();
+        renderWizardLiveSummary(garmentGroups);
+      }
 
-    function renderWizardLiveSummary(garmentGroups) {
-      const clientField = document.getElementById("wizard-client-id");
-      const selectedClientLabel = clientField?.selectedOptions?.[0]?.textContent || "Sin cliente";
-      const garmentsCountNode = document.getElementById("wizard-summary-garments");
-      const modelsCountNode = document.getElementById("wizard-summary-models");
-      const posesCountNode = document.getElementById("wizard-summary-poses");
-      const clientNode = document.getElementById("wizard-summary-client");
-      const providerNode = document.getElementById("wizard-summary-provider");
+      function renderWizardLiveSummary(garmentGroups) {
+        const selectedClientLabel = clientField?.selectedOptions?.[0]?.textContent || "Sin cliente";
+        const garmentsCountNode = document.getElementById("wizard-summary-garments");
+        const modelNode = document.getElementById("wizard-summary-model");
+        const clientNode = document.getElementById("wizard-summary-client");
+        const providerNode = document.getElementById("wizard-summary-provider");
       const sizeNode = document.getElementById("wizard-summary-size");
       const readinessNode = document.getElementById("wizard-summary-readiness");
       const providerSettings = buildProviderSettingsPayload();
@@ -208,34 +218,109 @@
         ? `${providerSettings.imageSize.width || 0}x${providerSettings.imageSize.height || 0}`
         : providerSettings.imageSize;
 
-      if (garmentsCountNode) garmentsCountNode.textContent = String(garmentGroups.length);
-      if (modelsCountNode) modelsCountNode.textContent = String(state.models.length);
-      if (posesCountNode) posesCountNode.textContent = `${state.poses.length} / 4`;
+        if (garmentsCountNode) garmentsCountNode.textContent = String(garmentGroups.length);
+        if (modelNode) {
+          const selectedModel = state.availableModels.find((model) => model.modelId === state.selectedModelId);
+          modelNode.textContent = selectedModel ? `${selectedModel.name} (${state.selectedModelPhotoIds.length} fotos)` : "Sin modelo";
+        }
       if (clientNode) clientNode.textContent = selectedClientLabel;
       if (providerNode) providerNode.textContent = providerSettings.modelId || "-";
       if (sizeNode) sizeNode.textContent = imageSizeLabel;
-      if (readinessNode) {
-        const readiness = [];
-        if (state.garments.length < 1) readiness.push("falta al menos 1 producto");
-        if (state.models.length < 1) readiness.push("falta al menos 1 modelo");
-        if (state.poses.length < 4) readiness.push("faltan poses");
+        if (readinessNode) {
+          const readiness = [];
+          if (state.garments.length < 1) readiness.push("falta al menos 1 producto");
+          if (!state.selectedModelId || state.selectedModelPhotoIds.length !== 4) readiness.push("faltan 4 fotos de modelo");
         readinessNode.textContent = readiness.length
           ? `Pendiente: ${readiness.join(", ")}.`
           : "Listo para lanzar el batch cuando confirmes el paso 5.";
       }
-    }
+      }
 
-    async function addFiles(kind, files) {
-      if (kind === "garments") {
-        state.garments = mergeByKey(state.garments, files);
+      function renderModelCatalog() {
+        if (!modelCatalogNode) {
+          return;
+        }
+        const models = getFilteredModels();
+        if (!models.length) {
+          modelCatalogNode.innerHTML = `<div class="empty-state wizard-empty">No hay modelos disponibles para este cliente. Puedes crearlos en la seccion Modelos.</div>`;
+          return;
+        }
+        modelCatalogNode.innerHTML = models.map((model) => {
+          const cover = model.photos?.[0];
+          const active = model.modelId === state.selectedModelId;
+          return `
+            <button type="button" class="wizard-model-card ${active ? "active" : ""}" data-model-id="${escapeHtml(model.modelId)}">
+              <div class="wizard-model-card-thumb">
+                ${cover ? `<img src="${escapeHtml(cover.previewUrl)}" alt="${escapeHtml(model.name)}" />` : `<div class="empty-state compact-empty">Sin foto</div>`}
+              </div>
+              <div class="wizard-model-card-body">
+                <strong>${escapeHtml(model.name)}</strong>
+                <p class="muted">${escapeHtml(model.clientName || "Libre")} · ${model.gender === "female" ? "Mujer" : "Hombre"}</p>
+                <p class="muted">${model.photos.length} foto(s)</p>
+              </div>
+            </button>
+          `;
+        }).join("");
+        modelCatalogNode.querySelectorAll(".wizard-model-card").forEach((button) => {
+          button.addEventListener("click", () => {
+            const modelId = button.getAttribute("data-model-id");
+            const model = state.availableModels.find((item) => item.modelId === modelId);
+            if (!model) {
+              return;
+            }
+            state.selectedModelId = model.modelId;
+            state.selectedModelPhotoIds = model.photos.slice(0, 4).map((photo) => photo.photoId);
+            renderWizardState();
+          });
+        });
       }
-      if (kind === "models") {
-        state.models = mergeByKey(state.models, files);
+
+      function renderSelectedModel() {
+        if (!selectedModelEmptyNode || !selectedModelShell || !selectedModelName || !selectedModelMeta || !modelPhotoPicker) {
+          return;
+        }
+        const selectedModel = state.availableModels.find((model) => model.modelId === state.selectedModelId);
+        if (!selectedModel) {
+          selectedModelEmptyNode.hidden = false;
+          selectedModelShell.hidden = true;
+          return;
+        }
+        selectedModelEmptyNode.hidden = true;
+        selectedModelShell.hidden = false;
+        selectedModelName.textContent = selectedModel.name;
+        selectedModelMeta.textContent = [
+          selectedModel.clientName || "Libre",
+          selectedModel.gender === "female" ? "Mujer" : "Hombre",
+          selectedModel.ageGroup ? modelAgeGroupLabels[selectedModel.ageGroup] || selectedModel.ageGroup : null
+        ].filter(Boolean).join(" · ");
+        modelPhotoPicker.innerHTML = selectedModel.photos.map((photo) => {
+          const checked = state.selectedModelPhotoIds.includes(photo.photoId);
+          return `
+            <label class="wizard-model-photo-tile ${checked ? "active" : ""}" data-photo-id="${escapeHtml(photo.photoId)}">
+              <input type="checkbox" class="wizard-model-photo-checkbox" value="${escapeHtml(photo.photoId)}" ${checked ? "checked" : ""} />
+              <img src="${escapeHtml(photo.previewUrl)}" alt="Foto de ${escapeHtml(selectedModel.name)}" />
+            </label>
+          `;
+        }).join("");
+        modelPhotoPicker.querySelectorAll(".wizard-model-photo-checkbox").forEach((checkbox) => {
+          checkbox.addEventListener("change", () => {
+            state.selectedModelPhotoIds = Array.from(modelPhotoPicker.querySelectorAll(".wizard-model-photo-checkbox"))
+              .filter((node) => node.checked)
+              .map((node) => node.value);
+            modelPhotoPicker.querySelectorAll(".wizard-model-photo-tile").forEach((tile) => {
+              tile.classList.toggle("active", state.selectedModelPhotoIds.includes(tile.getAttribute("data-photo-id")));
+            });
+            renderWizardLiveSummary(summarizeGarments(state.garments));
+          });
+        });
       }
-      if (kind === "poses") {
-        state.poses = mergeByKey(state.poses, files).slice(0, 4);
+
+      async function addFiles(kind, files) {
+        if (kind === "garments") {
+          state.garments = mergeByKey(state.garments, files);
+          renderWizardState();
+          return;
       }
-      renderWizardState();
     }
 
     document.querySelectorAll(".wizard-pick-button").forEach((button) => {
@@ -253,21 +338,29 @@
         if (target.id.startsWith("garments")) {
           await addFiles("garments", files);
         }
-        if (target.id.startsWith("models")) {
-          await addFiles("models", files);
-        }
-        if (target.id.startsWith("poses")) {
-          await addFiles("poses", files);
-        }
         target.value = "";
       });
-    });
+      });
 
-    imageSizeSelect?.addEventListener("change", renderProviderSettingsState);
-    document.getElementById("wizard-client-id")?.addEventListener("change", () => renderWizardLiveSummary(summarizeGarments(state.garments)));
-    document.getElementById("wizard-fal-model")?.addEventListener("change", () => renderWizardLiveSummary(summarizeGarments(state.garments)));
-    document.getElementById("wizard-custom-width")?.addEventListener("input", () => renderWizardLiveSummary(summarizeGarments(state.garments)));
-    document.getElementById("wizard-custom-height")?.addEventListener("input", () => renderWizardLiveSummary(summarizeGarments(state.garments)));
+      imageSizeSelect?.addEventListener("change", renderProviderSettingsState);
+      document.getElementById("wizard-client-id")?.addEventListener("change", () => {
+        if (state.selectedModelId && !getFilteredModels().some((model) => model.modelId === state.selectedModelId)) {
+          state.selectedModelId = "";
+          state.selectedModelPhotoIds = [];
+        }
+        renderWizardState();
+      });
+      document.getElementById("wizard-fal-model")?.addEventListener("change", () => renderWizardLiveSummary(summarizeGarments(state.garments)));
+      document.getElementById("wizard-custom-width")?.addEventListener("input", () => renderWizardLiveSummary(summarizeGarments(state.garments)));
+      document.getElementById("wizard-custom-height")?.addEventListener("input", () => renderWizardLiveSummary(summarizeGarments(state.garments)));
+      backgroundModeSelect?.addEventListener("change", () => {
+        renderBackgroundState();
+        renderWizardLiveSummary(summarizeGarments(state.garments));
+      });
+      backgroundBokehInput?.addEventListener("input", () => {
+        renderBackgroundState();
+        renderWizardLiveSummary(summarizeGarments(state.garments));
+      });
 
     document.querySelectorAll(".dropzone").forEach((dropzone) => {
       const kind = dropzone.getAttribute("data-dropzone");
@@ -309,32 +402,31 @@
       renderWizardStep();
     });
 
-    nextButton?.addEventListener("click", () => {
-      const validationError = validateWizardStep(state.step, state);
-      if (validationError) {
-        setWizardFeedback(validationError, true);
-        return;
-      }
-      state.step = Math.min(5, state.step + 1);
-      setWizardFeedback("");
-      renderWizardStep();
-    });
+      nextButton?.addEventListener("click", () => {
+        const validationError = validateWizardStep(state.step, state);
+        if (validationError) {
+          setWizardFeedback(validationError, true);
+          return;
+        }
+        state.step = Math.min(5, state.step + 1);
+        setWizardFeedback("");
+        renderWizardStep();
+      });
 
-    wizardForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const validationError = validateWizardStep(4, state);
-      const providerValidationError = validateWizardStep(5, state);
-      if (validationError || providerValidationError) {
-        setWizardFeedback(validationError || providerValidationError, true);
-        return;
+      wizardForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const promptValidationError = validateWizardStep(3, state);
+        const backgroundValidationError = validateWizardStep(4, state);
+        const providerValidationError = validateWizardStep(5, state);
+        if (promptValidationError || backgroundValidationError || providerValidationError) {
+          setWizardFeedback(promptValidationError || backgroundValidationError || providerValidationError, true);
+          return;
       }
       try {
         submitButton.disabled = true;
         submitButton.textContent = "Preparando...";
         const formData = new FormData();
         appendFilesToFormData(formData, "garmentFiles", "garmentMeta", state.garments);
-        appendFilesToFormData(formData, "modelFiles", "modelMeta", state.models);
-        appendFilesToFormData(formData, "poseFiles", "poseMeta", state.poses);
         formData.append("promptConfig", JSON.stringify({
           systemPrompt: document.getElementById("wizard-system-prompt")?.value || "",
           generalPrompt: document.getElementById("wizard-general-prompt")?.value || "",
@@ -342,12 +434,17 @@
             field.getAttribute("data-pose-id"),
             field.value || ""
           ])),
+          backgroundConfig: buildBackgroundConfigPayload(),
           providerSettings: buildProviderSettingsPayload()
-        }));
-        formData.append("clientId", document.getElementById("wizard-client-id")?.value || "");
+          }));
+          formData.append("clientId", document.getElementById("wizard-client-id")?.value || "");
+          formData.append("modelSelection", JSON.stringify({
+            modelId: state.selectedModelId,
+            selectedPhotoIds: state.selectedModelPhotoIds
+          }));
 
-        const response = await fetch("/api/wizard/setup", {
-          method: "POST",
+          const response = await fetch("/api/wizard/setup", {
+            method: "POST",
           body: formData
         });
         const payload = await response.json().catch(() => ({}));
@@ -366,9 +463,28 @@
       }
     });
 
-    renderWizardStep();
-    renderWizardState();
-    renderProviderSettingsState();
+      renderWizardStep();
+      renderWizardState();
+      renderProviderSettingsState();
+      renderBackgroundState();
+    }
+
+  function buildBackgroundConfigPayload() {
+    return {
+      mode: document.getElementById("wizard-background-mode")?.value || "white",
+      bokehIntensity: Number(document.getElementById("wizard-background-bokeh")?.value || "45"),
+      lightingStyle: document.getElementById("wizard-background-lighting")?.value || "clear_soft_daylight",
+      scene: document.getElementById("wizard-background-scene")?.value || "none",
+      dominantColor: document.getElementById("wizard-background-color")?.value || "white",
+      backgroundProminence: document.getElementById("wizard-background-prominence")?.value || "minimal",
+      contrast: document.getElementById("wizard-background-contrast")?.value || "soft",
+      realismLevel: document.getElementById("wizard-background-realism")?.value || "catalogo_realista",
+      subjectSeparation: document.getElementById("wizard-background-separation")?.value || "strong",
+      noPeople: Boolean(document.getElementById("wizard-background-no-people")?.checked),
+      noProps: Boolean(document.getElementById("wizard-background-no-props")?.checked),
+      noText: Boolean(document.getElementById("wizard-background-no-text")?.checked),
+      customInstructions: document.getElementById("wizard-background-custom")?.value || ""
+    };
   }
 
   function buildProviderSettingsPayload() {
@@ -442,11 +558,11 @@
     if (step >= 1 && state.garments.length < 1) {
       return "Debes cargar al menos 1 imagen o carpeta de producto antes de continuar.";
     }
-    if (step >= 2 && state.models.length < 1) {
-      return "Debes cargar al menos 1 imagen de modelo antes de continuar.";
+    if (step >= 2 && !state.selectedModelId) {
+      return "Debes seleccionar un modelo antes de continuar.";
     }
-    if (step >= 3 && state.poses.length < 4) {
-      return "Debes cargar exactamente 4 imagenes de pose antes de continuar.";
+    if (step >= 2 && state.selectedModelPhotoIds.length !== 4) {
+      return "Debes seleccionar exactamente 4 fotos del modelo.";
     }
     if (step >= 5) {
       const providerSettings = buildProviderSettingsPayload();
@@ -500,7 +616,8 @@
         file,
         name: file.name,
         relativePath,
-        size: file.size
+        size: file.size,
+        previewUrl: URL.createObjectURL(file)
       }];
     }
     if (!entry.isDirectory) {
@@ -534,112 +651,6 @@
       .replaceAll(">", "&gt;")
       .replaceAll("\"", "&quot;")
       .replaceAll("'", "&#39;");
-  }
-
-  async function bootChangeModelModal() {
-    if (!changeModelButton || !changeModelModal) {
-      return;
-    }
-
-    let availableModels = [];
-    let selectedModel = pageModel.selectedModel || "";
-
-    changeModelModal.hidden = true;
-
-    function renderModelPicker() {
-      const grid = document.getElementById("model-picker-grid");
-      const selectedModelPreview = document.getElementById("selected-model-preview");
-      const selectedModelPreviewImage = document.getElementById("selected-model-preview-image");
-      const selectedModelPreviewName = document.getElementById("selected-model-preview-name");
-      if (!grid) {
-        return;
-      }
-      grid.innerHTML = availableModels.map((model) => `
-        <button
-          type="button"
-          class="model-picker-card ${model.path === selectedModel ? "active" : ""}"
-          data-model-path="${encodeURIComponent(model.path)}"
-          aria-pressed="${model.path === selectedModel ? "true" : "false"}"
-        >
-          <img src="${model.fileUrl}" alt="${escapeHtml(model.name)}" />
-          <span class="model-picker-name">${escapeHtml(model.name)}</span>
-          <span class="model-picker-badge">${model.path === selectedModel ? "Seleccionado" : "Elegir"}</span>
-        </button>
-      `).join("");
-
-      const activeModel = availableModels.find((model) => model.path === selectedModel);
-      if (selectedModelPreview && selectedModelPreviewImage && selectedModelPreviewName) {
-        if (activeModel) {
-          selectedModelPreview.hidden = false;
-          selectedModelPreviewImage.src = activeModel.fileUrl;
-          selectedModelPreviewName.textContent = activeModel.name;
-        } else {
-          selectedModelPreview.hidden = true;
-          selectedModelPreviewImage.removeAttribute("src");
-          selectedModelPreviewName.textContent = "";
-        }
-      }
-
-      grid.querySelectorAll(".model-picker-card").forEach((button) => {
-        button.addEventListener("click", () => {
-          selectedModel = decodeURIComponent(button.getAttribute("data-model-path") || "");
-          renderModelPicker();
-        });
-      });
-    }
-
-    async function openModal() {
-      changeModelModal.hidden = false;
-      setChangeModelFeedback("", false);
-      if (availableModels.length === 0) {
-        const response = await fetch("/api/models");
-        const payload = await response.json();
-        availableModels = payload.models || [];
-      }
-      renderModelPicker();
-    }
-
-    function closeModal() {
-      changeModelModal.hidden = true;
-    }
-
-    changeModelButton.addEventListener("click", () => {
-      openModal().catch((error) => setFlash(error.message, true));
-    });
-    closeChangeModelModalButton?.addEventListener("click", closeModal);
-    changeModelModal.addEventListener("click", (event) => {
-      if (event.target === changeModelModal) {
-        closeModal();
-      }
-    });
-
-    submitChangeModelButton?.addEventListener("click", async () => {
-      if (!selectedModel) {
-        setChangeModelFeedback("Selecciona un modelo antes de continuar.", true);
-        return;
-      }
-      try {
-        submitChangeModelButton.disabled = true;
-        submitChangeModelButton.textContent = "Guardando...";
-        const posePrompts = Object.fromEntries(Array.from(document.querySelectorAll(".change-model-pose-prompt")).map((field) => [
-          field.getAttribute("data-pose-id"),
-          field.value || ""
-        ]));
-        await postJson(`/api/product/${pageModel.productId}/change-model`, {
-          selectedModel,
-          generalPrompt: document.getElementById("change-model-general-prompt")?.value || "",
-          posePrompts
-        });
-        setChangeModelFeedback("Producto actualizado. Regenerando con el nuevo modelo...", false);
-        ensurePolling();
-        window.setTimeout(() => window.location.reload(), 800);
-      } catch (error) {
-        setChangeModelFeedback(error.message, true);
-      } finally {
-        submitChangeModelButton.disabled = false;
-        submitChangeModelButton.textContent = "Guardar y regenerar producto";
-      }
-    });
   }
 
   function setFlash(message, isError) {
@@ -917,6 +928,289 @@
     });
   }
 
+  function bootModelsPage() {
+    if (pageModel.page !== "models") {
+      return;
+    }
+    const modal = document.getElementById("create-model-modal");
+    const openButton = document.getElementById("open-create-model-modal");
+    const closeButton = document.getElementById("close-create-model-modal");
+    const submitButton = document.getElementById("submit-create-model-button");
+    const nameField = document.getElementById("create-model-name");
+    const clientField = document.getElementById("create-model-client-id");
+    const ageGroupField = document.getElementById("create-model-age-group");
+    const genderField = document.getElementById("create-model-gender");
+    const fullBodyField = document.getElementById("create-model-full-body");
+    const faceField = document.getElementById("create-model-face");
+    const handsField = document.getElementById("create-model-hands");
+    const feetField = document.getElementById("create-model-feet");
+    const swimwearField = document.getElementById("create-model-swimwear");
+    const photoInput = document.getElementById("create-model-photos-input");
+    const existingPhotoSummary = document.getElementById("create-model-existing-photos-summary");
+    const photoSummary = document.getElementById("create-model-photos-summary");
+    const feedback = document.getElementById("create-model-feedback");
+    const modalTitle = document.getElementById("model-modal-title");
+    const availableModels = Array.isArray(pageModel.models) ? pageModel.models : [];
+    const modalState = {
+      mode: "create",
+      modelId: "",
+      existingPhotos: [],
+      newPhotos: []
+    };
+
+    if (!modal || !openButton || !closeButton || !submitButton || !nameField || !clientField || !ageGroupField || !genderField || !fullBodyField || !faceField || !handsField || !feetField || !swimwearField || !photoInput || !existingPhotoSummary || !photoSummary || !feedback || !modalTitle) {
+      return;
+    }
+
+    function setModelFeedback(message, isError) {
+      feedback.textContent = message;
+      feedback.style.color = isError ? "#fca5a5" : "#86efac";
+    }
+
+    function resetModalState() {
+      modalState.mode = "create";
+      modalState.modelId = "";
+      modalState.existingPhotos = [];
+      modalState.newPhotos = [];
+      nameField.value = "";
+      clientField.value = "";
+      ageGroupField.value = "";
+      genderField.value = "female";
+      fullBodyField.checked = false;
+      faceField.checked = true;
+      handsField.checked = false;
+      feetField.checked = false;
+      swimwearField.checked = false;
+      modalTitle.textContent = "Agregar modelo";
+      submitButton.textContent = "Guardar modelo";
+      setModelFeedback("", false);
+    }
+
+    function renderModelPhotos() {
+      const keptExistingPhotos = modalState.existingPhotos.filter((photo) => photo.keep);
+      if (!keptExistingPhotos.length) {
+        existingPhotoSummary.innerHTML = `<div class="empty-state wizard-empty">No hay fotos actuales seleccionadas.</div>`;
+      } else {
+        existingPhotoSummary.innerHTML = keptExistingPhotos.map((item) => `
+          <article class="wizard-summary-card model-photo-card">
+            <div class="wizard-summary-thumb-grid"><img src="${escapeHtml(item.previewUrl)}" alt="${escapeHtml(item.name)}" /></div>
+            <strong>${escapeHtml(item.name)}</strong>
+            <button type="button" class="secondary small model-photo-toggle-button" data-existing-photo-id="${escapeHtml(item.photoId)}">Quitar</button>
+          </article>
+        `).join("");
+      }
+
+      existingPhotoSummary.querySelectorAll(".model-photo-toggle-button").forEach((button) => {
+        button.addEventListener("click", () => {
+          const photoId = button.getAttribute("data-existing-photo-id");
+          modalState.existingPhotos = modalState.existingPhotos.map((photo) => (
+            photo.photoId === photoId ? { ...photo, keep: false } : photo
+          ));
+          renderModelPhotos();
+        });
+      });
+
+      if (!modalState.newPhotos.length) {
+        photoSummary.innerHTML = `<div class="empty-state wizard-empty">Aun no hay fotos nuevas cargadas.</div>`;
+        return;
+      }
+
+      photoSummary.innerHTML = modalState.newPhotos.map((item) => `
+        <article class="wizard-summary-card model-photo-card">
+          <div class="wizard-summary-thumb-grid"><img src="${escapeHtml(item.previewUrl)}" alt="${escapeHtml(item.name)}" /></div>
+          <strong>${escapeHtml(item.name)}</strong>
+          <button type="button" class="secondary small model-photo-remove-button" data-new-photo-key="${escapeHtml(item.key)}">Quitar</button>
+        </article>
+      `).join("");
+
+      photoSummary.querySelectorAll(".model-photo-remove-button").forEach((button) => {
+        button.addEventListener("click", () => {
+          const photoKey = button.getAttribute("data-new-photo-key");
+          modalState.newPhotos = modalState.newPhotos.filter((photo) => photo.key !== photoKey);
+          renderModelPhotos();
+        });
+      });
+    }
+
+    function renderRemovedExistingPhotos() {
+      const removedPhotos = modalState.existingPhotos.filter((photo) => !photo.keep);
+      if (!removedPhotos.length) {
+        return;
+      }
+      existingPhotoSummary.insertAdjacentHTML("beforeend", removedPhotos.map((item) => `
+        <article class="wizard-summary-card model-photo-card removed">
+          <div class="wizard-summary-thumb-grid"><img src="${escapeHtml(item.previewUrl)}" alt="${escapeHtml(item.name)}" /></div>
+          <strong>${escapeHtml(item.name)}</strong>
+          <button type="button" class="secondary small model-photo-restore-button" data-existing-photo-id="${escapeHtml(item.photoId)}">Restaurar</button>
+        </article>
+      `).join(""));
+      existingPhotoSummary.querySelectorAll(".model-photo-restore-button").forEach((button) => {
+        button.addEventListener("click", () => {
+          const photoId = button.getAttribute("data-existing-photo-id");
+          modalState.existingPhotos = modalState.existingPhotos.map((photo) => (
+            photo.photoId === photoId ? { ...photo, keep: true } : photo
+          ));
+          renderModelPhotos();
+        });
+      });
+    }
+
+    function syncRenderedPhotos() {
+      renderModelPhotos();
+      renderRemovedExistingPhotos();
+    }
+
+    function totalSelectedPhotos() {
+      return modalState.existingPhotos.filter((photo) => photo.keep).length + modalState.newPhotos.length;
+    }
+
+    function openCreateModal() {
+      resetModalState();
+      modal.hidden = false;
+    }
+
+    function openEditModal(modelId) {
+      const model = availableModels.find((item) => item.modelId === modelId);
+      if (!model) {
+        return;
+      }
+      resetModalState();
+      modalState.mode = "edit";
+      modalState.modelId = model.modelId;
+      modalState.existingPhotos = (model.photos || []).map((photo) => ({
+        ...photo,
+        keep: true
+      }));
+      nameField.value = model.name || "";
+      clientField.value = model.clientId || "";
+      ageGroupField.value = model.ageGroup || "";
+      genderField.value = model.gender || "female";
+      fullBodyField.checked = Boolean(model.includesFullBody);
+      faceField.checked = Boolean(model.includesFace);
+      handsField.checked = Boolean(model.includesHands);
+      feetField.checked = Boolean(model.includesFeet);
+      swimwearField.checked = Boolean(model.includesSwimwear);
+      modalTitle.textContent = "Editar modelo";
+      submitButton.textContent = "Guardar cambios";
+      modal.hidden = false;
+      syncRenderedPhotos();
+    }
+
+    function closeModal() {
+      modal.hidden = true;
+    }
+
+    openButton.addEventListener("click", openCreateModal);
+    document.querySelectorAll(".model-edit-button").forEach((button) => {
+      button.addEventListener("click", () => openEditModal(button.getAttribute("data-model-id")));
+    });
+    document.querySelectorAll(".model-delete-button").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const modelId = button.getAttribute("data-model-id");
+        const modelName = button.getAttribute("data-model-name") || "este modelo";
+        if (!modelId || !window.confirm(`Vas a eliminar ${modelName}. Esta accion no se puede deshacer.`)) {
+          return;
+        }
+        try {
+          button.disabled = true;
+          const response = await fetch(`/api/models/${encodeURIComponent(modelId)}/delete`, {
+            method: "POST"
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(payload.error || "No se pudo eliminar el modelo.");
+          }
+          window.location.reload();
+        } catch (error) {
+          window.alert(error.message || "No se pudo eliminar el modelo.");
+        } finally {
+          button.disabled = false;
+        }
+      });
+    });
+    closeButton.addEventListener("click", closeModal);
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) {
+        closeModal();
+      }
+    });
+    photoInput.addEventListener("change", (event) => {
+      const remainingSlots = Math.max(0, 10 - totalSelectedPhotos());
+      const normalized = Array.from(event.currentTarget.files || []).map((file) => normalizePickedFile(file)).slice(0, remainingSlots);
+      modalState.newPhotos = mergeByKey(modalState.newPhotos, normalized).slice(0, Math.max(0, 10 - modalState.existingPhotos.filter((photo) => photo.keep).length));
+      syncRenderedPhotos();
+      event.currentTarget.value = "";
+    });
+    modal.querySelector('[data-target-input="create-model-photos-input"]')?.addEventListener("click", () => {
+      photoInput.click();
+    });
+    modal.querySelector('[data-dropzone="catalog-model-photos"]')?.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      event.currentTarget.classList.add("is-dragover");
+    });
+    modal.querySelector('[data-dropzone="catalog-model-photos"]')?.addEventListener("dragleave", (event) => {
+      event.currentTarget.classList.remove("is-dragover");
+    });
+    modal.querySelector('[data-dropzone="catalog-model-photos"]')?.addEventListener("drop", async (event) => {
+      event.preventDefault();
+      event.currentTarget.classList.remove("is-dragover");
+      const remainingSlots = Math.max(0, 10 - totalSelectedPhotos());
+      const dropped = (await collectDroppedFiles(event.dataTransfer)).slice(0, remainingSlots);
+      modalState.newPhotos = mergeByKey(modalState.newPhotos, dropped).slice(0, Math.max(0, 10 - modalState.existingPhotos.filter((photo) => photo.keep).length));
+      syncRenderedPhotos();
+    });
+
+    submitButton.addEventListener("click", async () => {
+      if (!nameField.value.trim()) {
+        setModelFeedback("Debes escribir un nombre para el modelo.", true);
+        return;
+      }
+      if (totalSelectedPhotos() < 1) {
+        setModelFeedback("Debes dejar al menos una foto del modelo.", true);
+        return;
+      }
+      try {
+        submitButton.disabled = true;
+        submitButton.textContent = modalState.mode === "edit" ? "Guardando cambios..." : "Guardando...";
+        const formData = new FormData();
+        formData.append("name", nameField.value.trim());
+        formData.append("clientId", clientField.value || "");
+        formData.append("ageGroup", ageGroupField.value || "");
+        formData.append("gender", genderField.value || "female");
+        formData.append("includesFullBody", String(Boolean(fullBodyField.checked)));
+        formData.append("includesFace", String(Boolean(faceField.checked)));
+        formData.append("includesHands", String(Boolean(handsField.checked)));
+        formData.append("includesFeet", String(Boolean(feetField.checked)));
+        formData.append("includesSwimwear", String(Boolean(swimwearField.checked)));
+        formData.append("keepPhotoIds", JSON.stringify(modalState.existingPhotos.filter((photo) => photo.keep).map((photo) => photo.photoId)));
+        modalState.newPhotos.forEach((item) => formData.append("modelPhotos", item.file, item.name));
+        const endpoint = modalState.mode === "edit" ? `/api/models/${encodeURIComponent(modalState.modelId)}` : "/api/models";
+        const response = await fetch(endpoint, {
+          method: "POST",
+          body: formData
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.error || "No se pudo guardar el modelo.");
+        }
+        setModelFeedback(
+          modalState.mode === "edit"
+            ? `Modelo ${payload.model.name} actualizado.`
+            : `Modelo ${payload.model.name} guardado.`,
+          false
+        );
+        window.setTimeout(() => window.location.reload(), 500);
+      } catch (error) {
+        setModelFeedback(error.message || "No se pudo guardar el modelo.", true);
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = modalState.mode === "edit" ? "Guardar cambios" : "Guardar modelo";
+      }
+    });
+
+    syncRenderedPhotos();
+  }
+
   async function pollUntilStable() {
     const response = await fetch(`/api/product/${pageModel.productId}`);
     if (!response.ok) {
@@ -1062,9 +1356,9 @@
   bootSidebarToggle();
   bootGarmentHoverPreview();
   bootGenerationWizard();
-  bootChangeModelModal();
   bootCarousels();
   bootPromptDrafts();
   bootBatchesPage();
   bootClientsPage();
+  bootModelsPage();
 })();

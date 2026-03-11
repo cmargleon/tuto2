@@ -6,6 +6,7 @@ import { readOptionalProductMetadata, classifyCategory } from "./category-servic
 import { getPoseTemplates } from "./pose-config";
 import { ProductRepository } from "../storage/product-repository";
 import { RuntimeStateRepository } from "../storage/runtime-state-repository";
+import { BatchRepository } from "../storage/batch-repository";
 import { clearDirectory, ensureDir, listDirectories, listImageFiles, sanitizeId } from "../utils/fs-helpers";
 
 interface ProductCandidate {
@@ -18,13 +19,13 @@ interface ProductCandidate {
 export class InputScannerService {
   constructor(
     private readonly repository: ProductRepository,
-    private readonly runtimeStateRepository: RuntimeStateRepository
+    private readonly runtimeStateRepository: RuntimeStateRepository,
+    private readonly batchRepository: BatchRepository
   ) {}
 
   async ensureStructure(): Promise<void> {
     await Promise.all([
       ensureDir(paths.garmentsDir),
-      ensureDir(paths.modelsDir),
       ensureDir(paths.posesDir),
       ensureDir(paths.archiveDir),
       ensureDir(paths.jobsDir),
@@ -61,18 +62,24 @@ export class InputScannerService {
     };
   }
 
-  async loadModels(): Promise<string[]> {
-    return listImageFiles(this.getInputDirs().modelsDir);
-  }
-
   async loadPoses(): Promise<PoseInput[]> {
-    const { posesDir } = this.getInputDirs();
-    const poseFiles = await listImageFiles(posesDir);
-    const firstFour = poseFiles.slice(0, 4);
-    if (firstFour.length < 4) {
-      throw new Error(`Expected 4 pose images in ${posesDir}, found ${firstFour.length}.`);
+    const { batchId } = this.getActiveBatchInfo();
+    const selection = this.batchRepository.getBatchModelSelection(batchId);
+    if (!selection || selection.selectedPhotoIds.length !== 4) {
+      throw new Error("Expected exactly 4 selected model photos to derive poses for the batch.");
     }
-    return firstFour.map((filePath, index) => ({
+    const model = this.batchRepository.getModel(selection.modelId);
+    if (!model) {
+      throw new Error(`Model not found for batch pose derivation: ${selection.modelId}.`);
+    }
+    const photosById = new Map(model.photos.map((photo) => [photo.photoId, photo.filePath]));
+    const poseFiles = selection.selectedPhotoIds
+      .map((photoId) => photosById.get(photoId))
+      .filter((filePath): filePath is string => Boolean(filePath));
+    if (poseFiles.length !== 4) {
+      throw new Error("The selected model photos could not be resolved into 4 pose references.");
+    }
+    return poseFiles.map((filePath, index) => ({
       poseId: `pose${index + 1}`,
       label: `Pose ${index + 1}`,
       filePath,
@@ -82,11 +89,7 @@ export class InputScannerService {
 
   async syncProducts(): Promise<ProductManifest[]> {
     await this.ensureStructure();
-    const { garmentsDir, modelsDir } = this.getInputDirs();
-    const models = await this.loadModels();
-    if (models.length === 0) {
-      throw new Error(`No model images found in ${modelsDir}.`);
-    }
+    const { garmentsDir } = this.getInputDirs();
     const batchId = this.getActiveBatchInfo().batchId;
     const candidates = await this.discoverProducts(garmentsDir);
     const existing = await this.repository.listProducts(batchId);
@@ -104,15 +107,12 @@ export class InputScannerService {
       const metadata = await readOptionalProductMetadata(candidate.productRoot);
       const current = existingMap.get(candidate.productId);
       const category = current?.category ?? classifyCategory(candidate.sourceName, metadata);
-      const selectedModel = current?.selectedModel
-        ?? pickDeterministicModel(models, candidate.productId);
       const poses = mergePoseState(current?.poses, category);
       const manifest: ProductManifest = {
         productId: candidate.productId,
         sourceName: candidate.sourceName,
         sku: metadata?.sku,
         garmentImages: candidate.garmentImages,
-        selectedModel,
         promptOverrides: current?.promptOverrides ?? {
           generalPrompt: "",
           posePrompts: {}
@@ -174,35 +174,21 @@ export class InputScannerService {
     return grouped;
   }
 
-  private getInputDirs(): { garmentsDir: string; modelsDir: string; posesDir: string } {
+  private getInputDirs(): { garmentsDir: string; posesDir: string } {
     const activeBatch = this.runtimeStateRepository.getActiveBatchState();
     if (activeBatch?.stagedInputRoot) {
       return {
         garmentsDir: path.join(activeBatch.stagedInputRoot, "garments"),
-        modelsDir: path.join(activeBatch.stagedInputRoot, "models"),
         posesDir: path.join(activeBatch.stagedInputRoot, "poses")
       };
     }
 
     return {
       garmentsDir: paths.garmentsDir,
-      modelsDir: paths.modelsDir,
       posesDir: paths.posesDir
     };
   }
 
-}
-
-function pickDeterministicModel(models: string[], productId: string): string {
-  let hash = 0;
-  for (const char of productId) {
-    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  }
-  const selected = models[hash % models.length];
-  if (!selected) {
-    throw new Error("Unable to select a model image.");
-  }
-  return selected;
 }
 
 function mergePoseState(current: ProductPoseState[] | undefined, category: ProductManifest["category"]): ProductPoseState[] {

@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS batch_prompt_configs (
   batch_id TEXT PRIMARY KEY REFERENCES batches(batch_id) ON DELETE CASCADE,
   system_prompt TEXT NOT NULL,
   general_prompt TEXT NOT NULL,
-  pose_prompts_json TEXT NOT NULL
+  pose_prompts_json TEXT NOT NULL,
+  background_config_json TEXT NOT NULL DEFAULT '{}'
 );
 
 CREATE TABLE IF NOT EXISTS batch_pose_prompts (
@@ -57,6 +58,18 @@ CREATE TABLE IF NOT EXISTS batch_provider_settings (
   seed INTEGER,
   sync_mode INTEGER NOT NULL DEFAULT 0,
   enable_safety_checker INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS batch_model_selection (
+  batch_id TEXT PRIMARY KEY REFERENCES batches(batch_id) ON DELETE CASCADE,
+  model_id TEXT NOT NULL REFERENCES models(model_id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS batch_model_selection_photos (
+  batch_id TEXT NOT NULL REFERENCES batches(batch_id) ON DELETE CASCADE,
+  photo_id TEXT NOT NULL REFERENCES model_photos(photo_id) ON DELETE RESTRICT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (batch_id, photo_id)
 );
 
 CREATE TABLE IF NOT EXISTS batch_events (
@@ -239,9 +252,32 @@ CREATE TABLE IF NOT EXISTS clients (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS models (
+  model_id TEXT PRIMARY KEY,
+  client_id TEXT REFERENCES clients(client_id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  age_group TEXT,
+  gender TEXT NOT NULL,
+  includes_full_body INTEGER NOT NULL DEFAULT 0,
+  includes_face INTEGER NOT NULL DEFAULT 1,
+  includes_hands INTEGER NOT NULL DEFAULT 0,
+  includes_feet INTEGER NOT NULL DEFAULT 0,
+  includes_swimwear INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS model_photos (
+  photo_id TEXT PRIMARY KEY,
+  model_id TEXT NOT NULL REFERENCES models(model_id) ON DELETE CASCADE,
+  file_path TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
 `;
 
-const CURRENT_USER_VERSION = 2;
+const CURRENT_USER_VERSION = 4;
 
 export class SqliteDatabase {
   private db: Database.Database | null = null;
@@ -280,8 +316,14 @@ function migrateSchemaIfNeeded(db: Database.Database): void {
     && !outputsInfo.some((column) => column.name === "batch_id" && column.pk > 0);
   const batchColumns = db.pragma("table_info(batches)") as Array<{ name: string }>;
   const hasBatchClientId = batchColumns.some((column) => column.name === "client_id");
+  const batchPromptColumns = db.pragma("table_info(batch_prompt_configs)") as Array<{ name: string }>;
+  const hasBackgroundConfigJson = batchPromptColumns.some((column) => column.name === "background_config_json");
+  const modelColumns = db.pragma("table_info(models)") as Array<{ name: string }>;
+  const hasLegacyModelAge = modelColumns.some((column) => column.name === "age");
+  const hasModelAgeGroup = modelColumns.some((column) => column.name === "age_group");
+  const hasModelSwimwear = modelColumns.some((column) => column.name === "includes_swimwear");
 
-  if (currentVersion >= CURRENT_USER_VERSION && !outputsUsesLegacyPrimaryKey && hasBatchClientId) {
+  if (currentVersion >= CURRENT_USER_VERSION && !outputsUsesLegacyPrimaryKey && hasBatchClientId && hasBackgroundConfigJson && hasModelAgeGroup && hasModelSwimwear) {
     return;
   }
 
@@ -341,6 +383,40 @@ function migrateSchemaIfNeeded(db: Database.Database): void {
     if (!hasBatchClientId) {
       db.exec(`
         ALTER TABLE batches ADD COLUMN client_id TEXT REFERENCES clients(client_id) ON DELETE SET NULL;
+      `);
+    }
+
+    if (!hasBackgroundConfigJson) {
+      db.exec(`
+        ALTER TABLE batch_prompt_configs ADD COLUMN background_config_json TEXT NOT NULL DEFAULT '{}';
+      `);
+    }
+
+    if (!hasModelAgeGroup) {
+      db.exec(`
+        ALTER TABLE models ADD COLUMN age_group TEXT;
+      `);
+    }
+
+    if (!hasModelSwimwear) {
+      db.exec(`
+        ALTER TABLE models ADD COLUMN includes_swimwear INTEGER NOT NULL DEFAULT 0;
+      `);
+    }
+
+    if (hasLegacyModelAge) {
+      db.exec(`
+        UPDATE models
+        SET age_group = CASE
+          WHEN age IS NULL THEN NULL
+          WHEN age <= 12 THEN 'nino'
+          WHEN age <= 17 THEN 'adolescente'
+          WHEN age <= 29 THEN 'adulto_joven'
+          WHEN age <= 59 THEN 'adulto'
+          WHEN age <= 74 THEN 'jubilado'
+          ELSE 'anciano'
+        END
+        WHERE age_group IS NULL AND age IS NOT NULL;
       `);
     }
 

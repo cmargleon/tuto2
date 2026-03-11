@@ -5,9 +5,11 @@ import type {
   BatchCounts,
   BatchEvent,
   BatchManifest,
+  BatchModelSelection,
   BatchPromptConfig,
   BatchSnapshot,
   BatchStatus,
+  CatalogModel,
   ClientRecord,
   ProductManifest
 } from "../../shared/types";
@@ -32,6 +34,7 @@ export class BatchHistoryService {
       ensureDir(paths.archiveDir),
       ensureDir(paths.savedBatchesDir),
       ensureDir(paths.inputRoot),
+      ensureDir(paths.modelCatalogDir),
       ensureDir(paths.jobsDir),
       ensureDir(paths.outputDir),
       ensureDir(paths.approvedDir),
@@ -39,7 +42,11 @@ export class BatchHistoryService {
     ]);
   }
 
-  async createBatchFromCurrentInput(promptConfig: BatchPromptConfig, clientId?: string): Promise<BatchManifest> {
+  async createBatchFromCurrentInput(
+    promptConfig: BatchPromptConfig,
+    clientId?: string,
+    modelSelection?: { modelId: string; selectedPhotoIds: string[] }
+  ): Promise<BatchManifest> {
     return this.withMutationLock(async () => {
       await this.ensureStructure();
       const batchId = this.createBatchId();
@@ -67,6 +74,13 @@ export class BatchHistoryService {
       };
 
       this.batchRepository.saveBatch(manifest);
+      if (modelSelection?.modelId && modelSelection.selectedPhotoIds.length > 0) {
+        this.batchRepository.saveBatchModelSelection({
+          batchId,
+          modelId: modelSelection.modelId,
+          selectedPhotoIds: modelSelection.selectedPhotoIds
+        });
+      }
       this.runtimeStateRepository.setDraftPromptConfig(promptConfig);
       this.runtimeStateRepository.setActiveBatchState({
         batchId,
@@ -157,8 +171,79 @@ export class BatchHistoryService {
     return this.batchRepository.listClients();
   }
 
+  listModels(filters?: { clientId?: string; includeFree?: boolean }) {
+    return this.batchRepository.listModels(filters);
+  }
+
   saveClient(client: ClientRecord): void {
     this.batchRepository.saveClient(client);
+  }
+
+  async saveModel(model: CatalogModel, files: Array<{ buffer: Buffer; originalName: string }>): Promise<void> {
+    await this.ensureStructure();
+    const modelRoot = path.join(paths.modelCatalogDir, model.modelId);
+    await ensureDir(modelRoot);
+    await Promise.all(model.photos.map((photo, index) => {
+      const file = files[index];
+      if (!file) {
+        throw new Error(`Falta la foto ${index + 1} para el modelo ${model.name}.`);
+      }
+      return fs.writeFile(photo.filePath, file.buffer);
+    }));
+    this.batchRepository.saveModel(model);
+  }
+
+  async updateModel(
+    model: CatalogModel,
+    newFiles: Array<{ buffer: Buffer; originalName: string; filePath: string }>,
+    removedFilePaths: string[]
+  ): Promise<void> {
+    await this.ensureStructure();
+    const modelRoot = path.join(paths.modelCatalogDir, model.modelId);
+    await ensureDir(modelRoot);
+    await Promise.all(removedFilePaths.map(async (filePath) => {
+      try {
+        await fs.rm(filePath, { force: true });
+      } catch {
+        return;
+      }
+    }));
+    await Promise.all(newFiles.map((file) => fs.writeFile(file.filePath, file.buffer)));
+    this.batchRepository.saveModel(model);
+  }
+
+  getModel(modelId: string) {
+    return this.batchRepository.getModel(modelId);
+  }
+
+  async deleteModel(modelId: string): Promise<void> {
+    const model = this.batchRepository.getModel(modelId);
+    this.batchRepository.deleteModel(modelId);
+    if (model) {
+      await fs.rm(path.join(paths.modelCatalogDir, modelId), {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100
+      });
+    }
+  }
+
+  getBatchModelSelection(batchId: string) {
+    return this.batchRepository.getBatchModelSelection(batchId);
+  }
+
+  async saveBatchModelSelection(selection: BatchModelSelection): Promise<void> {
+    await this.withMutationLock(async () => {
+      this.batchRepository.saveBatchModelSelection(selection);
+      const manifest = this.requireBatch(selection.batchId);
+      this.batchRepository.saveBatch({
+        ...manifest,
+        selectedModelId: selection.modelId,
+        selectedModelPhotoIds: selection.selectedPhotoIds,
+        updatedAt: new Date().toISOString()
+      });
+    });
   }
 
   saveSnapshot(snapshot: BatchSnapshot): void {
@@ -251,6 +336,14 @@ export class BatchHistoryService {
       await this.productRepository.duplicateBatchProducts(source.batchId, nextBatchId, (filePath) => {
         return filePath.replace(path.dirname(source.inputRoot), path.dirname(roots.inputRoot));
       });
+      const selection = this.batchRepository.getBatchModelSelection(source.batchId);
+      if (selection) {
+        this.batchRepository.saveBatchModelSelection({
+          batchId: nextBatchId,
+          modelId: selection.modelId,
+          selectedPhotoIds: selection.selectedPhotoIds
+        });
+      }
 
       this.appendEvent(nextBatchId, {
         type: "batch_duplicated",

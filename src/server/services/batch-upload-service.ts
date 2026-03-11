@@ -11,8 +11,6 @@ export interface UploadedFilePayload {
 
 export interface BatchUploadPayload {
   garments: UploadedFilePayload[];
-  models: UploadedFilePayload[];
-  poses: UploadedFilePayload[];
   promptConfig: BatchPromptConfig;
 }
 
@@ -21,28 +19,12 @@ export class BatchUploadService {
     if (payload.garments.length === 0) {
       throw new Error("Debes cargar al menos una imagen o carpeta de productos.");
     }
-    if (payload.models.length === 0) {
-      throw new Error("Debes cargar al menos una imagen de modelo.");
-    }
-    if (payload.poses.length < 4) {
-      throw new Error("Debes cargar 4 imagenes de pose.");
-    }
 
     const garmentsDir = path.join(inputRoot, "garments");
-    const modelsDir = path.join(inputRoot, "models");
-    const posesDir = path.join(inputRoot, "poses");
 
-    await Promise.all([
-      clearDirectory(garmentsDir),
-      clearDirectory(modelsDir),
-      clearDirectory(posesDir)
-    ]);
+    await clearDirectory(garmentsDir);
 
-    await Promise.all([
-      this.writeGarments(garmentsDir, payload.garments),
-      this.writeFlatFiles(modelsDir, payload.models),
-      this.writePoses(posesDir, payload.poses.slice(0, 4))
-    ]);
+    await this.writeGarments(garmentsDir, payload.garments);
   }
 
   private async writeGarments(targetRoot: string, files: UploadedFilePayload[]): Promise<void> {
@@ -73,23 +55,6 @@ export class BatchUploadService {
     await Promise.all(singleImages.map(async (file) => {
       const baseName = sanitizeId(path.parse(file.originalName).name) || `product-${Date.now()}`;
       const targetPath = path.join(targetRoot, `${baseName}${normalizeExtension(file.originalName)}`);
-      await fs.writeFile(targetPath, file.buffer);
-    }));
-  }
-
-  private async writeFlatFiles(targetDir: string, files: UploadedFilePayload[]): Promise<void> {
-    await ensureDir(targetDir);
-    await Promise.all(files.map(async (file, index) => {
-      const baseName = sanitizeId(path.parse(file.originalName).name) || `file-${index + 1}`;
-      const targetPath = path.join(targetDir, `${baseName}${normalizeExtension(file.originalName)}`);
-      await fs.writeFile(targetPath, file.buffer);
-    }));
-  }
-
-  private async writePoses(targetDir: string, files: UploadedFilePayload[]): Promise<void> {
-    await ensureDir(targetDir);
-    await Promise.all(files.map(async (file, index) => {
-      const targetPath = path.join(targetDir, `pose-${index + 1}${normalizeExtension(file.originalName)}`);
       await fs.writeFile(targetPath, file.buffer);
     }));
   }

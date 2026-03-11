@@ -2,11 +2,14 @@ import fs from "fs/promises";
 import path from "path";
 import type {
   ActiveBatchState,
+  BatchModelSelection,
   BatchSnapshot,
   BatchJob,
   BatchJobAttempt,
   BatchPromptConfig,
   BootstrapState,
+  CatalogModel,
+  CatalogModelPhoto,
   ClientRecord,
   GeneratedImageMetadata,
   GeneratedOutput,
@@ -21,7 +24,7 @@ import { paths } from "../config";
 import { ProductRepository } from "../storage/product-repository";
 import { JobRepository } from "../storage/job-repository";
 import { RuntimeStateRepository } from "../storage/runtime-state-repository";
-import { copyDirectory, ensureDir, fileExists, readJsonFile, writeJsonFile } from "../utils/fs-helpers";
+import { copyDirectory, ensureDir, fileExists, sanitizeId, writeJsonFile } from "../utils/fs-helpers";
 import { normalizeGeneratedImage, loadImageAsProviderInput } from "../utils/image-utils";
 import { PromptService } from "./prompt-service";
 import { InputScannerService } from "./input-scanner-service";
@@ -47,7 +50,6 @@ export class ProductService {
       status: item.status,
       approvedCount: Object.values(item.approved).reduce((sum, outputIds) => sum + outputIds.length, 0),
       totalApprovedNeeded: 4,
-      selectedModel: item.selectedModel,
       category: item.category
     }));
   }
@@ -124,12 +126,12 @@ export class ProductService {
     return this.scanner.syncProducts();
   }
 
-  async createBatchFromCurrentInput(promptConfig: BatchPromptConfig, clientId?: string) {
-    return this.batchHistoryService.createBatchFromCurrentInput(promptConfig, clientId);
-  }
-
-  async listAvailableModels(): Promise<string[]> {
-    return this.scanner.loadModels();
+  async createBatchFromCurrentInput(
+    promptConfig: BatchPromptConfig,
+    clientId?: string,
+    modelSelection?: { modelId: string; selectedPhotoIds: string[] }
+  ) {
+    return this.batchHistoryService.createBatchFromCurrentInput(promptConfig, clientId, modelSelection);
   }
 
   async findNextReviewableProductId(preferredId?: string): Promise<string | null> {
@@ -229,43 +231,6 @@ export class ProductService {
     return manifest;
   }
 
-  async changeProductModel(
-    productId: string,
-    selectedModel: string,
-    promptOverrides: ProductPromptOverrides
-  ): Promise<ProductManifest> {
-    const manifest = await this.getProduct(productId);
-    const availableModels = await this.listAvailableModels();
-    if (!availableModels.includes(selectedModel)) {
-      throw new Error("El modelo seleccionado no existe en el lote activo.");
-    }
-
-    manifest.selectedModel = selectedModel;
-    manifest.promptOverrides = {
-      generalPrompt: promptOverrides.generalPrompt?.trim() ?? "",
-      posePrompts: Object.fromEntries(
-        Object.entries(promptOverrides.posePrompts ?? {}).map(([poseId, prompt]) => [poseId, prompt.trim()])
-      )
-    };
-    manifest.outputs = [];
-    manifest.approved = {};
-    manifest.lastError = undefined;
-    manifest.status = "pending";
-    for (const pose of manifest.poses) {
-      pose.status = "pending";
-      pose.lastError = undefined;
-      pose.promptOverride = manifest.promptOverrides.posePrompts[pose.poseId] ?? "";
-      pose.lastPromptUsed = "";
-    }
-    const activeBatch = await this.requireActiveBatchState();
-    await fs.rm(path.join(activeBatch.sessionRoot, "output", manifest.productId), { recursive: true, force: true });
-    await fs.rm(path.join(activeBatch.sessionRoot, "approved", manifest.productId), { recursive: true, force: true });
-    await this.repository.saveProduct(manifest);
-    await this.batchHistoryService.syncActiveBatchFromCurrent("running", productId);
-    await this.logBatchEvent("model_changed", "Modelo y prompts del producto actualizados.", { productId });
-    return manifest;
-  }
-
   async generateMissingPoseOutputs(productId: string, poseInput: PoseInput): Promise<void> {
     const manifest = await this.getProduct(productId);
     const poseState = getPoseState(manifest, poseInput.poseId);
@@ -279,20 +244,19 @@ export class ProductService {
 
     try {
       const batchPromptConfig = await this.batchPromptConfigService.get();
+      const batchModelSelection = await this.getRequiredModelSelection();
       const garmentImages = await Promise.all(manifest.garmentImages.map((filePath) => loadImageAsProviderInput(filePath)));
-      const modelImage = manifest.category === "producto_sin_modelo" ? undefined : await loadImageAsProviderInput(manifest.selectedModel);
-      const poseImage = await loadImageAsProviderInput(poseInput.filePath);
+      const { modelImages, poseImage } = await this.buildModelAndPoseInputs(batchModelSelection, poseInput.filePath);
       const providerInput = poseState.promptOverride?.trim()
         ? {
             productId: manifest.productId,
             category: manifest.category,
             poseId: poseInput.poseId,
             poseLabel: poseInput.label,
+            modelImages,
             garmentImages,
-            modelImage,
             poseImage,
             variantCount: 1,
-            selectedModelFile: path.basename(manifest.selectedModel),
             prompt: poseState.promptOverride.trim(),
             providerSettings: batchPromptConfig.providerSettings
           }
@@ -301,11 +265,10 @@ export class ProductService {
             category: manifest.category,
             poseId: poseInput.poseId,
             poseLabel: poseInput.label,
+            modelImages,
             garmentImages,
-            modelImage,
             poseImage,
             variantCount: 1,
-            selectedModelFile: path.basename(manifest.selectedModel),
             promptOverride: poseState.promptOverride,
             batchPromptConfig,
             productGeneralPrompt: manifest.promptOverrides?.generalPrompt,
@@ -322,7 +285,6 @@ export class ProductService {
         manifest.category,
         poseInput.poseId,
         manifest.productId,
-        path.basename(manifest.selectedModel),
         poseState.promptOverride,
         {
           batchPromptConfig: batchPromptConfigResolved,
@@ -479,6 +441,10 @@ export class ProductService {
     return this.batchHistoryService.listClients();
   }
 
+  listModels(filters?: { clientId?: string; includeFree?: boolean }) {
+    return this.batchHistoryService.listModels(filters);
+  }
+
   createClient(input: { name: string; notes?: string }): ClientRecord {
     const name = input.name.trim();
     if (!name) {
@@ -495,6 +461,163 @@ export class ProductService {
       throw new Error("No se pudo guardar el cliente.");
     }
     return saved;
+  }
+
+  async createModel(input: {
+    name: string;
+    clientId?: string;
+    ageGroup?: CatalogModel["ageGroup"];
+    gender: CatalogModel["gender"];
+    includesFullBody: boolean;
+    includesFace: boolean;
+    includesHands: boolean;
+    includesFeet: boolean;
+    includesSwimwear: boolean;
+    photos: Array<{ buffer: Buffer; originalName: string }>;
+  }): Promise<CatalogModel> {
+    const name = input.name.trim();
+    if (!name) {
+      throw new Error("El nombre del modelo es obligatorio.");
+    }
+    if (input.photos.length < 1) {
+      throw new Error("Debes cargar al menos una foto del modelo.");
+    }
+    if (input.photos.length > 10) {
+      throw new Error("Solo se permiten hasta 10 fotos por modelo.");
+    }
+    const now = new Date().toISOString();
+    const modelId = `model-${sanitizeId(name)}-${Date.now().toString(36)}`;
+    const modelRoot = path.join(paths.modelCatalogDir, modelId);
+    const photos: CatalogModelPhoto[] = input.photos.map((photo, index) => {
+      const ext = path.extname(photo.originalName).toLowerCase() || ".jpg";
+      return {
+        photoId: `${modelId}-photo-${index + 1}`,
+        modelId,
+        filePath: path.join(modelRoot, `photo-${index + 1}${ext}`),
+        sortOrder: index
+      };
+    });
+
+    const model: CatalogModel = {
+      modelId,
+      clientId: input.clientId?.trim() || undefined,
+      name,
+      ageGroup: input.ageGroup,
+      gender: input.gender,
+      includesFullBody: input.includesFullBody,
+      includesFace: input.includesFace,
+      includesHands: input.includesHands,
+      includesFeet: input.includesFeet,
+      includesSwimwear: input.includesSwimwear,
+      createdAt: now,
+      updatedAt: now,
+      photos
+    };
+
+    await this.batchHistoryService.saveModel(model, input.photos);
+    return this.batchHistoryService.getModel(modelId) ?? model;
+  }
+
+  async updateModel(input: {
+    modelId: string;
+    name: string;
+    clientId?: string;
+    ageGroup?: CatalogModel["ageGroup"];
+    gender: CatalogModel["gender"];
+    includesFullBody: boolean;
+    includesFace: boolean;
+    includesHands: boolean;
+    includesFeet: boolean;
+    includesSwimwear: boolean;
+    keepPhotoIds: string[];
+    photos: Array<{ buffer: Buffer; originalName: string }>;
+  }): Promise<CatalogModel> {
+    const existing = this.batchHistoryService.getModel(input.modelId);
+    if (!existing) {
+      throw new Error("El modelo no existe.");
+    }
+    const name = input.name.trim();
+    if (!name) {
+      throw new Error("El nombre del modelo es obligatorio.");
+    }
+    const keptPhotos = existing.photos.filter((photo) => input.keepPhotoIds.includes(photo.photoId));
+    const totalPhotos = keptPhotos.length + input.photos.length;
+    if (totalPhotos < 1) {
+      throw new Error("El modelo debe conservar al menos una foto.");
+    }
+    if (totalPhotos > 10) {
+      throw new Error("Solo se permiten hasta 10 fotos por modelo.");
+    }
+
+    const now = new Date().toISOString();
+    const modelRoot = path.join(paths.modelCatalogDir, existing.modelId);
+    const newPhotos: CatalogModelPhoto[] = input.photos.map((photo, index) => {
+      const ext = path.extname(photo.originalName).toLowerCase() || ".jpg";
+      const suffix = `${Date.now().toString(36)}-${index + 1}`;
+      return {
+        photoId: `${existing.modelId}-photo-${suffix}`,
+        modelId: existing.modelId,
+        filePath: path.join(modelRoot, `photo-${suffix}${ext}`),
+        sortOrder: keptPhotos.length + index
+      };
+    });
+
+    const mergedPhotos = keptPhotos.concat(newPhotos).map((photo, index) => ({
+      ...photo,
+      sortOrder: index
+    }));
+
+    const nextModel: CatalogModel = {
+      ...existing,
+      clientId: input.clientId?.trim() || undefined,
+      name,
+      ageGroup: input.ageGroup,
+      gender: input.gender,
+      includesFullBody: input.includesFullBody,
+      includesFace: input.includesFace,
+      includesHands: input.includesHands,
+      includesFeet: input.includesFeet,
+      includesSwimwear: input.includesSwimwear,
+      updatedAt: now,
+      photos: mergedPhotos
+    };
+
+    const removedFilePaths = existing.photos
+      .filter((photo) => !input.keepPhotoIds.includes(photo.photoId))
+      .map((photo) => photo.filePath);
+
+    try {
+      await this.batchHistoryService.updateModel(
+        nextModel,
+        input.photos.map((photo, index) => ({
+          ...photo,
+          filePath: newPhotos[index]?.filePath ?? ""
+        })),
+        removedFilePaths
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("FOREIGN KEY")) {
+        throw new Error("No se pueden quitar fotos que estan siendo usadas por uno o mas batches.");
+      }
+      throw error;
+    }
+
+    return this.batchHistoryService.getModel(existing.modelId) ?? nextModel;
+  }
+
+  async deleteModel(modelId: string): Promise<void> {
+    const model = this.batchHistoryService.getModel(modelId);
+    if (!model) {
+      throw new Error("El modelo no existe.");
+    }
+    try {
+      await this.batchHistoryService.deleteModel(modelId);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("FOREIGN KEY")) {
+        throw new Error("No se puede eliminar este modelo porque esta siendo usado por uno o mas batches.");
+      }
+      throw error;
+    }
   }
 
   async getBatchSnapshots(batchId: string) {
@@ -557,6 +680,10 @@ export class ProductService {
     return this.batchHistoryService.deleteBatch(batchId);
   }
 
+  async setBatchModelSelection(input: { batchId: string; modelId: string; selectedPhotoIds: string[] }): Promise<void> {
+    await this.batchHistoryService.saveBatchModelSelection(input);
+  }
+
   async validateOutputFiles(manifest: ProductManifest): Promise<ProductManifest> {
     let changed = false;
     for (const output of manifest.outputs) {
@@ -582,7 +709,6 @@ export class ProductService {
         poseId: pose.poseId,
         category: manifest.category,
         productId: manifest.productId,
-        selectedModelFile: path.basename(manifest.selectedModel),
         batchPromptConfig,
         productGeneralPrompt: manifest.promptOverrides?.generalPrompt,
         productPosePrompt: manifest.promptOverrides?.posePrompts?.[pose.poseId]
@@ -629,6 +755,34 @@ export class ProductService {
       throw new Error("No active batch available.");
     }
     return activeBatch;
+  }
+
+  private async getRequiredModelSelection(): Promise<BatchModelSelection> {
+    const activeBatch = await this.requireActiveBatchState();
+    const selection = this.batchHistoryService.getBatchModelSelection(activeBatch.batchId);
+    if (!selection || selection.selectedPhotoIds.length !== 4) {
+      throw new Error("No hay 4 fotos de modelo seleccionadas para este batch.");
+    }
+    return selection;
+  }
+
+  private async buildModelAndPoseInputs(selection: BatchModelSelection, poseFilePath: string) {
+    const model = this.batchHistoryService.getModel(selection.modelId);
+    if (!model) {
+      throw new Error(`Modelo no encontrado: ${selection.modelId}`);
+    }
+    const selectedPaths = selection.selectedPhotoIds
+      .map((photoId) => model.photos.find((photo) => photo.photoId === photoId)?.filePath)
+      .filter((filePath): filePath is string => Boolean(filePath));
+    if (!selectedPaths.length) {
+      throw new Error("El modelo seleccionado no tiene fotos activas para enviar a la API.");
+    }
+    const identityPaths = selectedPaths.filter((filePath) => filePath !== poseFilePath);
+    const fallbackIdentityPaths = identityPaths.length > 0 ? identityPaths : [poseFilePath];
+    return {
+      modelImages: await Promise.all(fallbackIdentityPaths.map((filePath) => loadImageAsProviderInput(filePath))),
+      poseImage: await loadImageAsProviderInput(poseFilePath)
+    };
   }
 }
 

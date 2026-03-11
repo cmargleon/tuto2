@@ -14,7 +14,6 @@ type ProductRow = {
   sourceName: string;
   sku?: string | null;
   garmentImagesJson: string;
-  selectedModel: string;
   promptGeneralOverride: string;
   promptPoseOverridesJson: string;
   category: ProductManifest["category"];
@@ -107,7 +106,6 @@ export class ProductRepository {
         source_name AS sourceName,
         sku,
         garment_images_json AS garmentImagesJson,
-        selected_model AS selectedModel,
         prompt_general_override AS promptGeneralOverride,
         prompt_pose_overrides_json AS promptPoseOverridesJson,
         category,
@@ -253,7 +251,6 @@ export class ProductRepository {
       sourceName: row.sourceName,
       sku: row.sku ?? undefined,
       garmentImages: garmentImagesByProduct.get(row.productId) ?? parseJson<string[]>(row.garmentImagesJson, []),
-      selectedModel: row.selectedModel,
       promptOverrides: {
         generalPrompt: row.promptGeneralOverride,
         posePrompts: posePromptOverridesByProduct.get(row.productId) ?? parseJson<Record<string, string>>(row.promptPoseOverridesJson, {})
@@ -288,7 +285,7 @@ export class ProductRepository {
           prompt_general_override, prompt_pose_overrides_json, category, status, created_at, updated_at, last_error
         )
         VALUES (
-          @batchId, @productId, @sourceName, @sku, @garmentImagesJson, @selectedModel,
+          @batchId, @productId, @sourceName, @sku, @garmentImagesJson, '',
           @promptGeneralOverride, @promptPoseOverridesJson, @category, @status, @createdAt, @updatedAt, @lastError
         )
         ON CONFLICT(batch_id, product_id) DO UPDATE SET
@@ -309,7 +306,6 @@ export class ProductRepository {
         sourceName: nextManifest.sourceName,
         sku: nextManifest.sku ?? null,
         garmentImagesJson: JSON.stringify(nextManifest.garmentImages),
-        selectedModel: nextManifest.selectedModel,
         promptGeneralOverride: nextManifest.promptOverrides?.generalPrompt ?? "",
         promptPoseOverridesJson: JSON.stringify(nextManifest.promptOverrides?.posePrompts ?? {}),
         category: nextManifest.category,
@@ -442,7 +438,6 @@ export class ProductRepository {
       const duplicated: ProductManifest = {
         ...product,
         garmentImages: product.garmentImages.map(pathTransform),
-        selectedModel: pathTransform(product.selectedModel),
         outputs: product.outputs.map((output) => ({
           ...output,
           filePath: pathTransform(output.filePath),

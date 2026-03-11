@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Modelos</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body class="dashboard-body" data-page="models">
+    <% const ageLabels = {
+      nino: "Nino",
+      adolescente: "Adolescente",
+      adulto_joven: "Adulto joven",
+      adulto: "Adulto",
+      jubilado: "Jubilado",
+      anciano: "Anciano"
+    }; %>
+    <div class="dashboard-layout">
+      <%- include("partials/dashboard-sidebar", {
+        activeMenu,
+        isSidebarCollapsed: false,
+        product: null,
+        allProducts: [],
+        basename,
+        fileUrl,
+        explicitSelections: 0
+      }) %>
+
+      <main class="dashboard-content">
+        <section class="topbar app-topbar">
+          <div class="topbar-title">
+            <p class="eyebrow">Catalogo</p>
+            <h2>Modelos</h2>
+            <p class="muted">Crea un catalogo reutilizable de modelos por cliente o libres para poder seleccionarlos directamente desde el wizard.</p>
+          </div>
+          <div class="batch-card-actions">
+            <button type="button" id="open-create-model-modal">Agregar modelo</button>
+          </div>
+        </section>
+
+        <section class="dashboard-grid model-catalog-grid">
+          <% if (!models.length) { %>
+            <article class="summary-card dashboard-card">
+              <p class="summary-kicker">Sin modelos</p>
+              <h3>Aun no hay modelos creados</h3>
+              <p class="muted">Agrega tu primer modelo para reutilizarlo en futuros batches.</p>
+            </article>
+          <% } %>
+
+          <% for (const model of models) { %>
+            <article class="summary-card dashboard-card model-card">
+              <div class="model-card-actions">
+                <button type="button" class="secondary model-edit-button" data-model-id="<%= model.modelId %>">Editar</button>
+                <button type="button" class="secondary danger model-delete-button" data-model-id="<%= model.modelId %>" data-model-name="<%= model.name %>">Eliminar</button>
+              </div>
+              <div class="model-card-thumb">
+                <% if (model.photos[0]) { %>
+                  <img src="<%= fileUrl(model.photos[0].filePath) %>" alt="<%= model.name %>" />
+                <% } else { %>
+                  <div class="empty-state compact-empty">Sin foto</div>
+                <% } %>
+              </div>
+              <div class="model-card-body">
+                <p class="summary-kicker"><%= model.clientName || "Libre" %></p>
+                <h3><%= model.name %></h3>
+                <div class="batch-stats">
+                  <p><strong>Genero</strong><span><%= model.gender === "female" ? "Mujer" : "Hombre" %></span></p>
+                  <p><strong>Edad</strong><span><%= model.ageGroup ? ageLabels[model.ageGroup] : "N/A" %></span></p>
+                  <p><strong>Fotos</strong><span><%= model.photos.length %></span></p>
+                  <p><strong>Cuerpo entero</strong><span><%= model.includesFullBody ? "Si" : "No" %></span></p>
+                  <p><strong>Rostro</strong><span><%= model.includesFace ? "Si" : "No" %></span></p>
+                  <p><strong>Manos</strong><span><%= model.includesHands ? "Si" : "No" %></span></p>
+                  <p><strong>Pies</strong><span><%= model.includesFeet ? "Si" : "No" %></span></p>
+                  <p><strong>Traje de bano</strong><span><%= model.includesSwimwear ? "Si" : "No" %></span></p>
+                </div>
+                <div class="model-card-photo-strip">
+                  <% for (const photo of model.photos.slice(0, 5)) { %>
+                    <img src="<%= fileUrl(photo.filePath) %>" alt="Foto de <%= model.name %>" />
+                  <% } %>
+                </div>
+              </div>
+            </article>
+          <% } %>
+        </section>
+      </main>
+    </div>
+
+    <div class="modal-backdrop" id="create-model-modal" hidden>
+      <div class="modal-card model-modal-card">
+        <div class="modal-head">
+          <div>
+            <p class="summary-kicker">Catalogo</p>
+            <h3 id="model-modal-title">Agregar modelo</h3>
+          </div>
+          <button type="button" class="secondary" id="close-create-model-modal">Cerrar</button>
+        </div>
+        <div class="modal-content">
+          <div class="wizard-provider-grid model-form-grid">
+            <div class="prompt-shell">
+              <label for="create-model-name">Nombre</label>
+              <input id="create-model-name" class="wizard-input" type="text" placeholder="Ej. Modelo Barbie 01" />
+            </div>
+            <div class="prompt-shell">
+              <label for="create-model-client-id">Cliente</label>
+              <select id="create-model-client-id" class="wizard-select">
+                <option value="">Libre</option>
+                <% for (const client of clients) { %>
+                  <option value="<%= client.clientId %>"><%= client.name %></option>
+                <% } %>
+              </select>
+            </div>
+            <div class="prompt-shell">
+              <label for="create-model-age-group">Edad</label>
+              <select id="create-model-age-group" class="wizard-select">
+                <option value="">Selecciona un rango</option>
+                <option value="nino">Nino</option>
+                <option value="adolescente">Adolescente</option>
+                <option value="adulto_joven">Adulto joven</option>
+                <option value="adulto">Adulto</option>
+                <option value="jubilado">Jubilado</option>
+                <option value="anciano">Anciano</option>
+              </select>
+            </div>
+            <div class="prompt-shell">
+              <label for="create-model-gender">Genero</label>
+              <select id="create-model-gender" class="wizard-select">
+                <option value="female">Mujer</option>
+                <option value="male">Hombre</option>
+              </select>
+            </div>
+            <label class="wizard-checkbox"><input id="create-model-full-body" type="checkbox" /><span>Cuerpo entero</span></label>
+            <label class="wizard-checkbox"><input id="create-model-face" type="checkbox" checked /><span>Rostro</span></label>
+            <label class="wizard-checkbox"><input id="create-model-hands" type="checkbox" /><span>Manos</span></label>
+            <label class="wizard-checkbox"><input id="create-model-feet" type="checkbox" /><span>Pies</span></label>
+            <label class="wizard-checkbox"><input id="create-model-swimwear" type="checkbox" /><span>Traje de bano</span></label>
+          </div>
+
+          <div class="dropzone" data-dropzone="catalog-model-photos">
+            <input id="create-model-photos-input" type="file" class="wizard-file-input" accept="image/*" multiple hidden />
+            <p class="dropzone-title">Arrastra hasta 10 fotos del modelo</p>
+            <p class="muted">Puedes usar primer plano, cuerpo entero y detalles como manos o pies.</p>
+            <div class="dropzone-actions">
+              <button type="button" class="secondary wizard-pick-button" data-target-input="create-model-photos-input">Anadir fotos</button>
+            </div>
+          </div>
+          <div class="model-photo-section">
+            <div class="model-photo-section-head">
+              <h4>Fotos actuales</h4>
+              <p class="muted">Puedes quitar o mantener las fotos existentes del modelo.</p>
+            </div>
+            <div class="wizard-list" id="create-model-existing-photos-summary">
+              <div class="empty-state wizard-empty">Aun no hay fotos cargadas.</div>
+            </div>
+          </div>
+          <div class="model-photo-section">
+            <div class="model-photo-section-head">
+              <h4>Fotos nuevas</h4>
+              <p class="muted">Las fotos nuevas se suman a las actuales, con un maximo total de 10.</p>
+            </div>
+            <div class="wizard-list" id="create-model-photos-summary"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <div id="create-model-feedback" class="flash" aria-live="polite"></div>
+          <button type="button" id="submit-create-model-button">Guardar modelo</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__PAGE_MODEL__ = {
+        page: "models",
+        models: <%- JSON.stringify(models.map((model) => ({
+          ...model,
+          photos: model.photos.map((photo) => ({
+            ...photo,
+            previewUrl: fileUrl(photo.filePath),
+            name: basename(photo.filePath)
+          }))
+        }))) %>
+      };
+    </script>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>

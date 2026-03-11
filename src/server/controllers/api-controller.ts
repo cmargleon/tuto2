@@ -1,10 +1,8 @@
 import type { Request, Response } from "express";
-import path from "path";
 import { ProductService } from "../services/product-service";
 import { BootstrapService } from "../services/bootstrap-service";
 import { JobRunner } from "../jobs/job-runner";
 import { BatchUploadService } from "../services/batch-upload-service";
-import { config } from "../config";
 import { defaultPromptConfig } from "../services/batch-prompt-config-service";
 
 export class ApiController {
@@ -25,13 +23,13 @@ export class ApiController {
     });
   };
 
-  getModels = async (_request: Request, response: Response): Promise<void> => {
+  getModels = async (request: Request, response: Response): Promise<void> => {
+    const clientId = typeof request.query.clientId === "string" ? request.query.clientId.trim() : "";
     response.json({
-      models: (await this.productService.listAvailableModels()).map((modelPath) => ({
-        path: modelPath,
-        name: path.basename(modelPath),
-        fileUrl: `/files?path=${encodeURIComponent(path.relative(config.dataDir, modelPath).replaceAll("\\", "/"))}`
-      }))
+      models: this.productService.listModels({
+        clientId: clientId || undefined,
+        includeFree: true
+      })
     });
   };
 
@@ -45,6 +43,64 @@ export class ApiController {
       ok: true,
       client
     });
+  };
+
+  createModel = async (request: Request, response: Response): Promise<void> => {
+    const files = (request.files as Express.Multer.File[] | undefined) ?? [];
+    const model = await this.productService.createModel({
+      name: typeof request.body.name === "string" ? request.body.name : "",
+      clientId: typeof request.body.clientId === "string" ? request.body.clientId : "",
+      ageGroup: typeof request.body.ageGroup === "string" && request.body.ageGroup.trim()
+        ? request.body.ageGroup as Parameters<ProductService["createModel"]>[0]["ageGroup"]
+        : undefined,
+      gender: request.body.gender === "male" ? "male" : "female",
+      includesFullBody: request.body.includesFullBody === "true",
+      includesFace: request.body.includesFace !== "false",
+      includesHands: request.body.includesHands === "true",
+      includesFeet: request.body.includesFeet === "true",
+      includesSwimwear: request.body.includesSwimwear === "true",
+      photos: files.map((file) => ({
+        buffer: file.buffer,
+        originalName: file.originalname
+      }))
+    });
+    response.json({
+      ok: true,
+      model
+    });
+  };
+
+  updateModel = async (request: Request, response: Response): Promise<void> => {
+    const files = (request.files as Express.Multer.File[] | undefined) ?? [];
+    const keepPhotoIds = parseJsonField<string[]>(request.body.keepPhotoIds, []);
+    const model = await this.productService.updateModel({
+      modelId: readParam(request.params.id, "id"),
+      name: typeof request.body.name === "string" ? request.body.name : "",
+      clientId: typeof request.body.clientId === "string" ? request.body.clientId : "",
+      ageGroup: typeof request.body.ageGroup === "string" && request.body.ageGroup.trim()
+        ? request.body.ageGroup as Parameters<ProductService["updateModel"]>[0]["ageGroup"]
+        : undefined,
+      gender: request.body.gender === "male" ? "male" : "female",
+      includesFullBody: request.body.includesFullBody === "true",
+      includesFace: request.body.includesFace !== "false",
+      includesHands: request.body.includesHands === "true",
+      includesFeet: request.body.includesFeet === "true",
+      includesSwimwear: request.body.includesSwimwear === "true",
+      keepPhotoIds,
+      photos: files.map((file) => ({
+        buffer: file.buffer,
+        originalName: file.originalname
+      }))
+    });
+    response.json({
+      ok: true,
+      model
+    });
+  };
+
+  deleteModel = async (request: Request, response: Response): Promise<void> => {
+    await this.productService.deleteModel(readParam(request.params.id, "id"));
+    response.json({ ok: true });
   };
 
   getProduct = async (request: Request, response: Response): Promise<void> => {
@@ -81,19 +137,23 @@ export class ApiController {
   setupBatch = async (request: Request, response: Response): Promise<void> => {
     const files = request.files as Record<string, Express.Multer.File[]> | undefined;
     const garmentMeta = parseJsonField<Array<{ clientId: string; relativePath?: string }>>(request.body.garmentMeta, []);
-    const modelMeta = parseJsonField<Array<{ clientId: string; relativePath?: string }>>(request.body.modelMeta, []);
-    const poseMeta = parseJsonField<Array<{ clientId: string; relativePath?: string }>>(request.body.poseMeta, []);
     const promptConfig = parseJsonField(request.body.promptConfig, {
       ...defaultPromptConfig,
       posePrompts: {} as Record<string, string>
     });
     const clientId = typeof request.body.clientId === "string" ? request.body.clientId.trim() : "";
+    const modelSelection = parseJsonField<{ modelId?: string; selectedPhotoIds?: string[] }>(request.body.modelSelection, {});
+    if (!modelSelection.modelId || !Array.isArray(modelSelection.selectedPhotoIds) || modelSelection.selectedPhotoIds.length !== 4) {
+      response.status(400).json({ error: "Debes seleccionar un modelo y exactamente 4 fotos del modelo." });
+      return;
+    }
 
-    const batch = await this.productService.createBatchFromCurrentInput(promptConfig, clientId || undefined);
+    const batch = await this.productService.createBatchFromCurrentInput(promptConfig, clientId || undefined, {
+      modelId: modelSelection.modelId ?? "",
+      selectedPhotoIds: Array.isArray(modelSelection.selectedPhotoIds) ? modelSelection.selectedPhotoIds : []
+    });
     await this.batchUploadService.replaceInputBatch(batch.inputRoot, {
       garments: mapUploadedFiles(files?.garmentFiles ?? [], garmentMeta),
-      models: mapUploadedFiles(files?.modelFiles ?? [], modelMeta),
-      poses: mapUploadedFiles(files?.poseFiles ?? [], poseMeta),
       promptConfig
     });
     await this.bootstrapService.start();
@@ -193,37 +253,6 @@ export class ApiController {
     });
   };
 
-  changeModel = async (request: Request, response: Response): Promise<void> => {
-    const productId = readParam(request.params.id, "id");
-    const {
-      selectedModel,
-      generalPrompt,
-      posePrompts
-    } = request.body as {
-      selectedModel?: string;
-      generalPrompt?: string;
-      posePrompts?: Record<string, string>;
-    };
-    if (!selectedModel) {
-      response.status(400).json({ error: "selectedModel is required." });
-      return;
-    }
-
-    const manifest = await this.productService.changeProductModel(productId, selectedModel, {
-      generalPrompt: generalPrompt ?? "",
-      posePrompts: posePrompts ?? {}
-    });
-
-    for (const pose of this.bootstrapService.getPoses()) {
-      this.jobRunner.enqueuePriority({ productId: manifest.productId, pose });
-    }
-
-    response.json({
-      ok: true,
-      productId: manifest.productId,
-      status: manifest.status
-    });
-  };
 }
 
 function parseJsonField<T>(value: unknown, fallback: T): T {

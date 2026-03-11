@@ -85,7 +85,6 @@
                   <tr>
                     <th>Producto</th>
                     <th>Estado</th>
-                    <th>Modelo</th>
                     <th>Outputs</th>
                     <th>Selecciones</th>
                     <th>Accion</th>
@@ -96,7 +95,6 @@
                     <tr>
                       <td><strong><%= product.productId %></strong><br /><span class="muted"><%= product.sourceName %></span></td>
                       <td><span class="status <%= product.status %>"><%= product.status %></span></td>
-                      <td><%= basename(product.selectedModel) %></td>
                       <td><%= product.outputs.length %></td>
                       <td><%= Object.values(product.approved).reduce((sum, ids) => sum + ids.length, 0) %>/4</td>
                       <td><a href="/review/<%= product.productId %>" class="secondary">Revisar</a></td>

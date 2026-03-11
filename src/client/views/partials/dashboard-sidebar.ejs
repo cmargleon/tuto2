@@ -26,6 +26,10 @@
         <span class="dashboard-nav-icon">B</span>
         <span class="dashboard-nav-text">Batches</span>
       </a>
+      <a href="/models" class="dashboard-nav-link <%= activeMenu === 'models' ? 'active' : '' %>">
+        <span class="dashboard-nav-icon">M</span>
+        <span class="dashboard-nav-text">Modelos</span>
+      </a>
       <a href="/clients" class="dashboard-nav-link <%= activeMenu === 'clients' ? 'active' : '' %>">
         <span class="dashboard-nav-icon">C</span>
         <span class="dashboard-nav-text">Clientes</span>
@@ -40,7 +44,6 @@
           <div class="summary-grid">
             <p><strong>Categoria</strong><span><%= product.category %></span></p>
             <p><strong>Estado</strong><span class="status <%= product.status %>"><%= product.status %></span></p>
-            <p><strong>Modelo</strong><span><%= basename(product.selectedModel) %></span></p>
             <p><strong>Fotos prenda</strong><span><%= product.garmentImages.length %></span></p>
             <p><strong>Selecciones</strong><span><%= explicitSelections %>/4</span></p>
           </div>
@@ -59,10 +62,6 @@
                 </div>
               <% } %>
             </div>
-          </div>
-          <div class="thumb-card thumb-card-wide">
-            <p class="thumb-label">Modelo</p>
-            <img src="<%= fileUrl(product.selectedModel) %>" alt="model" />
           </div>
         </div>
 

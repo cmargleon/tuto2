@@ -1,6 +1,9 @@
 import path from "path";
 import type {
+  BatchModelSelection,
   BatchCounts,
+  CatalogModel,
+  CatalogModelPhoto,
   BatchEvent,
   BatchManifest,
   BatchPromptConfig,
@@ -45,6 +48,7 @@ interface PromptRow {
   systemPrompt: string;
   generalPrompt: string;
   posePromptsJson: string;
+  backgroundConfigJson: string;
   modelId: string;
   imageSizeType: string;
   imageSizePreset?: string | null;
@@ -53,6 +57,29 @@ interface PromptRow {
   seed?: number | null;
   syncMode: number;
   enableSafetyChecker: number;
+}
+
+interface ModelRow {
+  modelId: string;
+  clientId?: string | null;
+  clientName?: string | null;
+  name: string;
+  ageGroup?: string | null;
+  gender: CatalogModel["gender"];
+  includesFullBody: number;
+  includesFace: number;
+  includesHands: number;
+  includesFeet: number;
+  includesSwimwear: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ModelPhotoRow {
+  photoId: string;
+  modelId: string;
+  filePath: string;
+  sortOrder: number;
 }
 
 export class BatchRepository {
@@ -219,17 +246,19 @@ export class BatchRepository {
       });
 
       this.db.prepare(`
-        INSERT INTO batch_prompt_configs (batch_id, system_prompt, general_prompt, pose_prompts_json)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO batch_prompt_configs (batch_id, system_prompt, general_prompt, pose_prompts_json, background_config_json)
+        VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(batch_id) DO UPDATE SET
           system_prompt = excluded.system_prompt,
           general_prompt = excluded.general_prompt,
-          pose_prompts_json = excluded.pose_prompts_json
+          pose_prompts_json = excluded.pose_prompts_json,
+          background_config_json = excluded.background_config_json
       `).run(
         batch.batchId,
         promptConfig.systemPrompt,
         promptConfig.generalPrompt,
-        JSON.stringify(promptConfig.posePrompts ?? {})
+        JSON.stringify(promptConfig.posePrompts ?? {}),
+        JSON.stringify(promptConfig.backgroundConfig ?? {})
       );
 
       this.db.prepare(`DELETE FROM batch_pose_prompts WHERE batch_id = ?`).run(batch.batchId);
@@ -269,6 +298,23 @@ export class BatchRepository {
         providerSettings.syncMode ? 1 : 0,
         providerSettings.enableSafetyChecker ? 1 : 0
       );
+
+      this.db.prepare(`DELETE FROM batch_model_selection WHERE batch_id = ?`).run(batch.batchId);
+      this.db.prepare(`DELETE FROM batch_model_selection_photos WHERE batch_id = ?`).run(batch.batchId);
+      if (batch.selectedModelId) {
+        this.db.prepare(`
+          INSERT INTO batch_model_selection (batch_id, model_id)
+          VALUES (?, ?)
+        `).run(batch.batchId, batch.selectedModelId);
+
+        const insertSelectedPhoto = this.db.prepare(`
+          INSERT INTO batch_model_selection_photos (batch_id, photo_id, sort_order)
+          VALUES (?, ?, ?)
+        `);
+        (batch.selectedModelPhotoIds ?? []).forEach((photoId, index) => {
+          insertSelectedPhoto.run(batch.batchId, photoId, index);
+        });
+      }
     })();
   }
 
@@ -298,6 +344,7 @@ export class BatchRepository {
         pc.system_prompt AS systemPrompt,
         pc.general_prompt AS generalPrompt,
         pc.pose_prompts_json AS posePromptsJson,
+        pc.background_config_json AS backgroundConfigJson,
         ps.model_id AS modelId,
         ps.image_size_type AS imageSizeType,
         ps.image_size_preset AS imageSizePreset,
@@ -328,6 +375,21 @@ export class BatchRepository {
       posePrompts: posePromptRows.length > 0
         ? Object.fromEntries(posePromptRows.map((item) => [item.poseId, item.promptText]))
         : parseJson<Record<string, string>>(row.posePromptsJson, {}),
+      backgroundConfig: parseJson<BatchPromptConfig["backgroundConfig"]>(row.backgroundConfigJson, {
+        mode: "white",
+        bokehIntensity: 45,
+        lightingStyle: "clear_soft_daylight",
+        scene: "none",
+        dominantColor: "white",
+        backgroundProminence: "minimal",
+        contrast: "soft",
+        realismLevel: "catalogo_realista",
+        subjectSeparation: "strong",
+        noPeople: true,
+        noProps: true,
+        noText: true,
+        customInstructions: ""
+      }),
       providerSettings: this.mapProviderSettings(row)
     };
   }
@@ -421,6 +483,186 @@ export class BatchRepository {
     clients.forEach((client) => this.saveClient(client));
   }
 
+  listModels(filters?: { clientId?: string; includeFree?: boolean }): CatalogModel[] {
+    const clauses: string[] = [];
+    const params: Record<string, string> = {};
+    if (filters?.clientId) {
+      if (filters.includeFree) {
+        clauses.push("(models.client_id = @clientId OR models.client_id IS NULL)");
+      } else {
+        clauses.push("models.client_id = @clientId");
+      }
+      params.clientId = filters.clientId;
+    }
+    const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    const modelRows = this.db.prepare(`
+      SELECT
+        models.model_id AS modelId,
+        models.client_id AS clientId,
+        clients.name AS clientName,
+        models.name AS name,
+        models.age_group AS ageGroup,
+        models.gender AS gender,
+        models.includes_full_body AS includesFullBody,
+        models.includes_face AS includesFace,
+        models.includes_hands AS includesHands,
+        models.includes_feet AS includesFeet,
+        models.includes_swimwear AS includesSwimwear,
+        models.created_at AS createdAt,
+        models.updated_at AS updatedAt
+      FROM models
+      LEFT JOIN clients ON clients.client_id = models.client_id
+      ${whereClause}
+      ORDER BY models.updated_at DESC, models.name ASC
+    `).all(params) as ModelRow[];
+
+    const photoRows = this.db.prepare(`
+      SELECT
+        photo_id AS photoId,
+        model_id AS modelId,
+        file_path AS filePath,
+        sort_order AS sortOrder
+      FROM model_photos
+      ORDER BY model_id ASC, sort_order ASC, photo_id ASC
+    `).all() as ModelPhotoRow[];
+
+    const photosByModel = new Map<string, CatalogModelPhoto[]>();
+    for (const row of photoRows) {
+      const bucket = photosByModel.get(row.modelId) ?? [];
+      bucket.push({
+        photoId: row.photoId,
+        modelId: row.modelId,
+        filePath: row.filePath,
+        sortOrder: row.sortOrder
+      });
+      photosByModel.set(row.modelId, bucket);
+    }
+
+    return modelRows.map((row) => ({
+      modelId: row.modelId,
+      clientId: row.clientId ?? undefined,
+      clientName: row.clientName ?? undefined,
+      name: row.name,
+      ageGroup: row.ageGroup ? row.ageGroup as CatalogModel["ageGroup"] : undefined,
+      gender: row.gender,
+      includesFullBody: Boolean(row.includesFullBody),
+      includesFace: Boolean(row.includesFace),
+      includesHands: Boolean(row.includesHands),
+      includesFeet: Boolean(row.includesFeet),
+      includesSwimwear: Boolean(row.includesSwimwear),
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      photos: photosByModel.get(row.modelId) ?? []
+    }));
+  }
+
+  getModel(modelId: string): CatalogModel | null {
+    return this.listModels().find((model) => model.modelId === modelId) ?? null;
+  }
+
+  saveModel(model: CatalogModel): void {
+    this.db.transaction(() => {
+      this.db.prepare(`
+        INSERT INTO models (
+          model_id, client_id, name, age_group, gender, includes_full_body, includes_face, includes_hands, includes_feet, includes_swimwear, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(model_id) DO UPDATE SET
+          client_id = excluded.client_id,
+          name = excluded.name,
+          age_group = excluded.age_group,
+          gender = excluded.gender,
+          includes_full_body = excluded.includes_full_body,
+          includes_face = excluded.includes_face,
+          includes_hands = excluded.includes_hands,
+          includes_feet = excluded.includes_feet,
+          includes_swimwear = excluded.includes_swimwear,
+          updated_at = excluded.updated_at
+      `).run(
+        model.modelId,
+        model.clientId ?? null,
+        model.name,
+        model.ageGroup ?? null,
+        model.gender,
+        model.includesFullBody ? 1 : 0,
+        model.includesFace ? 1 : 0,
+        model.includesHands ? 1 : 0,
+        model.includesFeet ? 1 : 0,
+        model.includesSwimwear ? 1 : 0,
+        model.createdAt,
+        model.updatedAt
+      );
+
+      const existingPhotoRows = this.db.prepare(`
+        SELECT photo_id AS photoId
+        FROM model_photos
+        WHERE model_id = ?
+      `).all(model.modelId) as Array<{ photoId: string }>;
+      const nextPhotoIds = new Set(model.photos.map((photo) => photo.photoId));
+      const deletePhoto = this.db.prepare(`DELETE FROM model_photos WHERE photo_id = ?`);
+      existingPhotoRows
+        .filter((row) => !nextPhotoIds.has(row.photoId))
+        .forEach((row) => {
+          deletePhoto.run(row.photoId);
+        });
+
+      const insertPhoto = this.db.prepare(`
+        INSERT INTO model_photos (photo_id, model_id, file_path, sort_order, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(photo_id) DO UPDATE SET
+          file_path = excluded.file_path,
+          sort_order = excluded.sort_order
+      `);
+      model.photos.forEach((photo, index) => {
+        insertPhoto.run(photo.photoId, model.modelId, photo.filePath, index, model.createdAt);
+      });
+    })();
+  }
+
+  deleteModel(modelId: string): void {
+    this.db.prepare(`DELETE FROM models WHERE model_id = ?`).run(modelId);
+  }
+
+  getBatchModelSelection(batchId: string): BatchModelSelection | null {
+    const selection = this.db.prepare(`
+      SELECT batch_id AS batchId, model_id AS modelId
+      FROM batch_model_selection
+      WHERE batch_id = ?
+    `).get(batchId) as { batchId: string; modelId: string } | undefined;
+    if (!selection) {
+      return null;
+    }
+    const photoRows = this.db.prepare(`
+      SELECT photo_id AS photoId
+      FROM batch_model_selection_photos
+      WHERE batch_id = ?
+      ORDER BY sort_order ASC, photo_id ASC
+    `).all(batchId) as Array<{ photoId: string }>;
+    return {
+      batchId,
+      modelId: selection.modelId,
+      selectedPhotoIds: photoRows.map((row) => row.photoId)
+    };
+  }
+
+  saveBatchModelSelection(selection: BatchModelSelection): void {
+    this.db.transaction(() => {
+      this.db.prepare(`DELETE FROM batch_model_selection WHERE batch_id = ?`).run(selection.batchId);
+      this.db.prepare(`DELETE FROM batch_model_selection_photos WHERE batch_id = ?`).run(selection.batchId);
+      this.db.prepare(`
+        INSERT INTO batch_model_selection (batch_id, model_id)
+        VALUES (?, ?)
+      `).run(selection.batchId, selection.modelId);
+      const insertPhoto = this.db.prepare(`
+        INSERT INTO batch_model_selection_photos (batch_id, photo_id, sort_order)
+        VALUES (?, ?, ?)
+      `);
+      selection.selectedPhotoIds.forEach((photoId, index) => {
+        insertPhoto.run(selection.batchId, photoId, index);
+      });
+    })();
+  }
+
   listSnapshots(batchId: string): BatchSnapshot[] {
     return this.db.prepare(`
       SELECT
@@ -482,6 +724,7 @@ export class BatchRepository {
 
   private mapBatchRow(row: BatchRow): BatchManifest {
     const promptConfig = this.getPromptConfig(row.batchId);
+    const modelSelection = this.getBatchModelSelection(row.batchId);
     if (!promptConfig) {
       throw new Error(`Prompt config missing for batch ${row.batchId}.`);
     }
@@ -513,7 +756,9 @@ export class BatchRepository {
       approvedRoot: row.approvedRoot,
       stateRoot: row.stateRoot,
       notes: row.notes,
-      lastError: row.lastError
+      lastError: row.lastError,
+      selectedModelId: modelSelection?.modelId,
+      selectedModelPhotoIds: modelSelection?.selectedPhotoIds ?? []
     };
   }
 

@@ -23,16 +23,16 @@
           <div class="topbar-title">
             <p class="eyebrow">Wizard</p>
             <h2>Generar Imagenes</h2>
-            <p class="muted">Carga productos, modelos, poses y el prompt base del lote. Cuando completes el wizard, la app preparará los inputs locales y arrancará la generación automáticamente.</p>
+            <p class="muted">Carga productos, elige un modelo del catalogo y selecciona 4 fotos del modelo que ya contienen las poses finales antes de lanzar la generacion.</p>
           </div>
         </section>
 
         <section class="summary-card wizard-shell">
           <div class="wizard-progress">
             <button class="wizard-step active" type="button" data-step="1">1. Productos</button>
-            <button class="wizard-step" type="button" data-step="2">2. Modelos</button>
-            <button class="wizard-step" type="button" data-step="3">3. Poses</button>
-            <button class="wizard-step" type="button" data-step="4">4. Prompt</button>
+            <button class="wizard-step" type="button" data-step="2">2. Modelo</button>
+            <button class="wizard-step" type="button" data-step="3">3. Prompt</button>
+            <button class="wizard-step" type="button" data-step="4">4. Fondo</button>
             <button class="wizard-step" type="button" data-step="5">5. API fal.ai</button>
           </div>
 
@@ -41,7 +41,7 @@
               <div class="wizard-copy">
                 <p class="summary-kicker">Paso 1</p>
                 <h3>Productos / vestimenta</h3>
-                <p class="muted">Puedes soltar imágenes sueltas, una carpeta con imágenes o una carpeta contenedora con varias carpetas de producto. Si subes imágenes sueltas, cada imagen se toma como un producto independiente.</p>
+                <p class="muted">Puedes soltar imagenes sueltas, una carpeta con imagenes o una carpeta contenedora con varias carpetas de producto. Si subes imagenes sueltas, cada imagen se toma como un producto independiente.</p>
               </div>
               <div class="prompt-shell wizard-client-shell">
                 <label for="wizard-client-id">Cliente</label>
@@ -51,15 +51,15 @@
                     <option value="<%= client.clientId %>" <%= selectedClientId === client.clientId ? "selected" : "" %>><%= client.name %></option>
                   <% } %>
                 </select>
-                <p class="muted">Asocia este batch a un cliente para poder filtrarlo, retomarlo y agruparlo por marca.</p>
+                <p class="muted">Al elegir un cliente, en el paso de modelo solo se mostraran modelos vinculados a ese cliente o libres.</p>
               </div>
               <div class="dropzone" data-dropzone="garments">
                 <input id="garments-file-input" type="file" class="wizard-file-input" accept="image/*" multiple hidden />
                 <input id="garments-folder-input" type="file" class="wizard-file-input" accept="image/*" webkitdirectory directory multiple hidden />
-                <p class="dropzone-title">Arrastra prendas o carpetas aquí</p>
-                <p class="muted">También puedes explorar tu equipo y seleccionar una carpeta o varias imágenes.</p>
+                <p class="dropzone-title">Arrastra prendas o carpetas aqui</p>
+                <p class="muted">Tambien puedes explorar tu equipo y seleccionar una carpeta o varias imagenes.</p>
                 <div class="dropzone-actions">
-                  <button type="button" class="secondary wizard-pick-button" data-target-input="garments-file-input">Agregar imágenes</button>
+                  <button type="button" class="secondary wizard-pick-button" data-target-input="garments-file-input">Agregar imagenes</button>
                   <button type="button" class="secondary wizard-pick-button" data-target-input="garments-folder-input">Agregar carpeta</button>
                 </div>
               </div>
@@ -69,40 +69,44 @@
             <section class="wizard-panel" data-step-panel="2">
               <div class="wizard-copy">
                 <p class="summary-kicker">Paso 2</p>
-                <h3>Modelos</h3>
-                <p class="muted">Carga las fotos de personas/modelos de referencia. El sistema seleccionará una por producto.</p>
+                <h3>Modelo</h3>
+                <p class="muted">Selecciona un modelo del catalogo y marca exactamente 4 fotos del modelo. Esas 4 fotos ya se usaran como referencia de identidad y de pose para el lote.</p>
               </div>
-              <div class="dropzone" data-dropzone="models">
-                <input id="models-file-input" type="file" class="wizard-file-input" accept="image/*" multiple hidden />
-                <p class="dropzone-title">Arrastra imágenes de modelos</p>
-                <p class="muted">También puedes elegir varias fotos desde el explorador local.</p>
-                <div class="dropzone-actions">
-                  <button type="button" class="secondary wizard-pick-button" data-target-input="models-file-input">Agregar modelos</button>
+              <div class="wizard-model-grid">
+                <div class="summary-card dashboard-card">
+                  <div class="panel-head">
+                    <div>
+                      <p class="summary-kicker">Catalogo</p>
+                      <h3>Modelos disponibles</h3>
+                    </div>
+                  </div>
+                  <div id="wizard-model-catalog" class="wizard-model-catalog"></div>
+                </div>
+                <div class="summary-card dashboard-card">
+                  <div class="panel-head">
+                    <div>
+                      <p class="summary-kicker">Seleccion</p>
+                      <h3>Fotos del modelo</h3>
+                    </div>
+                  </div>
+                  <div id="wizard-selected-model-empty" class="empty-state wizard-empty">Selecciona un modelo para ver sus fotos y elegir cuales enviar a la API.</div>
+                  <div id="wizard-selected-model-shell" class="wizard-selected-model-shell" hidden>
+                    <div class="wizard-selected-model-head">
+                      <div>
+                        <h4 id="wizard-selected-model-name">-</h4>
+                        <p id="wizard-selected-model-meta" class="muted">-</p>
+                      </div>
+                    </div>
+                    <div id="wizard-model-photo-picker" class="wizard-model-photo-picker"></div>
+                    <p class="muted">Selecciona exactamente 4 fotos del modelo. Cada una se convertira en una pose del lote.</p>
+                  </div>
                 </div>
               </div>
-              <div class="wizard-list" id="models-summary"></div>
             </section>
 
             <section class="wizard-panel" data-step-panel="3">
               <div class="wizard-copy">
                 <p class="summary-kicker">Paso 3</p>
-                <h3>Poses</h3>
-                <p class="muted">Carga las 4 imágenes de pose. Se ordenarán automáticamente como pose 1 a pose 4 según el orden seleccionado.</p>
-              </div>
-              <div class="dropzone" data-dropzone="poses">
-                <input id="poses-file-input" type="file" class="wizard-file-input" accept="image/*" multiple hidden />
-                <p class="dropzone-title">Arrastra las 4 poses</p>
-                <p class="muted">También puedes elegirlas desde el explorador local.</p>
-                <div class="dropzone-actions">
-                  <button type="button" class="secondary wizard-pick-button" data-target-input="poses-file-input">Agregar poses</button>
-                </div>
-              </div>
-              <div class="wizard-list" id="poses-summary"></div>
-            </section>
-
-            <section class="wizard-panel" data-step-panel="4">
-              <div class="wizard-copy">
-                <p class="summary-kicker">Paso 4</p>
                 <h3>Prompt</h3>
                 <p class="muted">Define un prompt general para todo el lote y agrega instrucciones extra por pose cuando haga falta.</p>
               </div>
@@ -110,22 +114,157 @@
                 <details class="system-prompt-toggle">
                   <summary>Prompt del sistema</summary>
                   <div class="prompt-shell system-prompt-shell">
-                    <p class="muted">Este bloque define los lineamientos generales que el sistema enviara junto con tu prompt. Solo editalo si realmente necesitas cambiar ese comportamiento.</p>
-                    <textarea id="wizard-system-prompt" rows="8" placeholder="Escribe aqui el prompt del sistema..."><%= defaultSystemPrompt %></textarea>
+                    <p class="muted">Este bloque define los lineamientos generales que el sistema enviara junto con tu prompt.</p>
+                    <textarea id="wizard-system-prompt" rows="10" placeholder="Escribe aqui el prompt del sistema..."><%= defaultSystemPrompt %></textarea>
                   </div>
                 </details>
                 <div class="prompt-shell">
                   <label for="wizard-general-prompt">Prompt general</label>
-                  <textarea id="wizard-general-prompt" rows="8" placeholder="Escribe aquí el prompt general del lote..."></textarea>
+                  <textarea id="wizard-general-prompt" rows="8" placeholder="Escribe aqui el prompt general del lote..."></textarea>
                 </div>
                 <div class="wizard-pose-prompts">
                   <% for (const poseId of ["pose1", "pose2", "pose3", "pose4"]) { %>
                     <div class="prompt-shell">
                       <label for="wizard-<%= poseId %>-prompt">Extra <%= poseId.toUpperCase() %></label>
-                      <textarea id="wizard-<%= poseId %>-prompt" class="wizard-pose-prompt" data-pose-id="<%= poseId %>" rows="4" placeholder="Instrucción extra opcional para <%= poseId %>"></textarea>
+                      <textarea id="wizard-<%= poseId %>-prompt" class="wizard-pose-prompt" data-pose-id="<%= poseId %>" rows="4" placeholder="Instruccion extra opcional para <%= poseId %>"></textarea>
                     </div>
                   <% } %>
                 </div>
+              </div>
+            </section>
+
+            <section class="wizard-panel" data-step-panel="4">
+              <div class="wizard-copy">
+                <p class="summary-kicker">Paso 4</p>
+                <h3>Fondo</h3>
+                <p class="muted">Configura el estilo del fondo para construir instrucciones consistentes en el prompt sin mezclar opciones incompatibles.</p>
+              </div>
+              <div class="wizard-provider-grid">
+                <div class="prompt-shell">
+                  <label for="wizard-background-mode">Modo de fondo</label>
+                  <select id="wizard-background-mode" class="wizard-select">
+                    <option value="white">Blanco solido</option>
+                    <option value="bokeh">Bokeh</option>
+                    <option value="studio">Estudio</option>
+                    <option value="exterior_natural">Exterior natural</option>
+                    <option value="exterior_urbano">Exterior urbano</option>
+                    <option value="interior_lifestyle">Interior lifestyle</option>
+                    <option value="custom">Personalizado</option>
+                  </select>
+                </div>
+
+                <div class="prompt-shell wizard-background-advanced" data-background-hide-for="white">
+                  <label for="wizard-background-scene">Escenario</label>
+                  <select id="wizard-background-scene" class="wizard-select">
+                    <option value="none">Sin escenario</option>
+                    <option value="arquitectura_moderna">Arquitectura moderna</option>
+                    <option value="calle_limpia">Calle limpia</option>
+                    <option value="terraza">Terraza</option>
+                    <option value="fachada_neutra">Fachada neutra</option>
+                    <option value="bosque">Bosque</option>
+                    <option value="mar">Mar</option>
+                    <option value="sendero">Sendero</option>
+                    <option value="jardin">Jardin</option>
+                    <option value="campo">Campo</option>
+                    <option value="living_minimalista">Living minimalista</option>
+                    <option value="estudio_creativo">Estudio creativo</option>
+                    <option value="cafe_elegante">Cafe elegante</option>
+                    <option value="vestidor">Vestidor</option>
+                    <option value="gimnasio_premium">Gimnasio premium</option>
+                    <option value="papel_seamless">Papel seamless</option>
+                    <option value="cemento_suave">Cemento suave</option>
+                  </select>
+                </div>
+
+                <div class="prompt-shell">
+                  <label for="wizard-background-lighting">Luz</label>
+                  <select id="wizard-background-lighting" class="wizard-select">
+                    <option value="clear_soft_daylight">Luz clara suave</option>
+                    <option value="warm_soft_daylight">Luz calida suave</option>
+                    <option value="cool_soft_daylight">Luz fria suave</option>
+                    <option value="studio_diffused">Estudio difuso</option>
+                    <option value="high_key">High key</option>
+                    <option value="editorial">Editorial</option>
+                    <option value="dramatic">Dramatica</option>
+                    <option value="overcast_soft">Nublado suave</option>
+                    <option value="golden_hour">Golden hour</option>
+                  </select>
+                </div>
+
+                <div class="prompt-shell wizard-background-advanced" data-background-hide-for="white">
+                  <label for="wizard-background-bokeh">Fuerza del bokeh</label>
+                  <input id="wizard-background-bokeh" class="wizard-input" type="range" min="0" max="100" step="1" value="45" />
+                  <p class="muted"><span id="wizard-background-bokeh-value">45</span>% desenfoque de fondo</p>
+                </div>
+
+                <div class="prompt-shell wizard-background-advanced" data-background-hide-for="white">
+                  <label for="wizard-background-color">Color dominante</label>
+                  <select id="wizard-background-color" class="wizard-select">
+                    <option value="white">Blanco</option>
+                    <option value="neutral gray">Gris neutro</option>
+                    <option value="warm beige">Beige calido</option>
+                    <option value="soft blue">Azul suave</option>
+                    <option value="forest green">Verde bosque</option>
+                    <option value="ocean blue">Azul mar</option>
+                    <option value="sand">Arena</option>
+                    <option value="black">Negro</option>
+                  </select>
+                </div>
+
+                <div class="prompt-shell wizard-background-advanced" data-background-hide-for="white">
+                  <label for="wizard-background-prominence">Protagonismo del fondo</label>
+                  <select id="wizard-background-prominence" class="wizard-select">
+                    <option value="minimal">Minimo</option>
+                    <option value="medium">Medio</option>
+                    <option value="editorial">Editorial</option>
+                  </select>
+                </div>
+
+                <div class="prompt-shell wizard-background-advanced" data-background-hide-for="white">
+                  <label for="wizard-background-contrast">Contraste</label>
+                  <select id="wizard-background-contrast" class="wizard-select">
+                    <option value="soft">Suave</option>
+                    <option value="medium">Medio</option>
+                    <option value="high">Alto</option>
+                  </select>
+                </div>
+
+                <div class="prompt-shell wizard-background-advanced" data-background-hide-for="white">
+                  <label for="wizard-background-realism">Realismo</label>
+                  <select id="wizard-background-realism" class="wizard-select">
+                    <option value="catalogo_realista">Catalogo realista</option>
+                    <option value="campana_lifestyle">Campana lifestyle</option>
+                  </select>
+                </div>
+
+                <div class="prompt-shell">
+                  <label for="wizard-background-separation">Separacion sujeto/fondo</label>
+                  <select id="wizard-background-separation" class="wizard-select">
+                    <option value="standard">Estandar</option>
+                    <option value="strong" selected>Fuerte</option>
+                    <option value="maximum">Maxima</option>
+                  </select>
+                </div>
+
+                <label class="wizard-checkbox wizard-background-advanced" data-background-hide-for="white">
+                  <input id="wizard-background-no-people" type="checkbox" checked />
+                  <span>Sin gente extra</span>
+                </label>
+
+                <label class="wizard-checkbox wizard-background-advanced" data-background-hide-for="white">
+                  <input id="wizard-background-no-props" type="checkbox" checked />
+                  <span>Sin props distractores</span>
+                </label>
+
+                <label class="wizard-checkbox">
+                  <input id="wizard-background-no-text" type="checkbox" checked />
+                  <span>Sin texto o senaletica</span>
+                </label>
+              </div>
+
+              <div class="prompt-shell wizard-background-custom-shell">
+                <label for="wizard-background-custom">Detalle extra de fondo</label>
+                <textarea id="wizard-background-custom" rows="4" placeholder="Ej. bosque suave con bokeh medio y luz calida, sin elementos que compitan con la prenda"></textarea>
               </div>
             </section>
 
@@ -197,14 +336,14 @@
               </div>
             </div>
           </form>
-
         </section>
       </main>
     </div>
 
     <script>
       window.__PAGE_MODEL__ = {
-        page: "generate-images"
+        page: "generate-images",
+        availableModels: <%- JSON.stringify(availableModels) %>
       };
     </script>
     <script src="/assets/app.js"></script>

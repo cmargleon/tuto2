@@ -29,7 +29,7 @@ async function main(): Promise<void> {
   const batchRepository = new BatchRepository();
   const jobRepository = new JobRepository();
   const repository = new ProductRepository(runtimeStateRepository);
-  const scanner = new InputScannerService(repository, runtimeStateRepository);
+  const scanner = new InputScannerService(repository, runtimeStateRepository, batchRepository);
   const promptService = new PromptService();
   const batchPromptConfigService = new BatchPromptConfigService(batchRepository, runtimeStateRepository);
   const batchHistoryService = new BatchHistoryService(batchRepository, repository, runtimeStateRepository);
@@ -69,10 +69,9 @@ async function main(): Promise<void> {
   const app = express();
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024, files: 200 } });
   const wizardUploadMiddleware = upload.fields([
-    { name: "garmentFiles", maxCount: 200 },
-    { name: "modelFiles", maxCount: 50 },
-    { name: "poseFiles", maxCount: 20 }
+    { name: "garmentFiles", maxCount: 200 }
   ]);
+  const modelUploadMiddleware = upload.array("modelPhotos", 10);
   app.set("view engine", "ejs");
   app.set("views", path.join(process.cwd(), "src", "client", "views"));
   app.use(express.json({ limit: "10mb" }));
@@ -100,7 +99,7 @@ async function main(): Promise<void> {
       next(error);
     }
   });
-  app.use(createRouter(apiController, pageController, wizardUploadMiddleware));
+  app.use(createRouter(apiController, pageController, wizardUploadMiddleware, modelUploadMiddleware));
 
   app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
     logger.error("Unhandled application error.", error);

@@ -84,7 +84,7 @@ export class FalSeedreamImageProvider implements ImageGenerationProvider {
 
 async function buildImageUrls(input: GenerateVariantsInput, uploadCache: Map<string, string>): Promise<string[]> {
   const urls = [
-    ...(input.modelImage ? [await uploadReferenceImage(input.modelImage, uploadCache)] : []),
+    ...(await Promise.all(input.modelImages.map((image) => uploadReferenceImage(image, uploadCache)))),
     ...(await Promise.all(input.garmentImages.map((image) => uploadReferenceImage(image, uploadCache)))),
     await uploadReferenceImage(input.poseImage, uploadCache)
   ];

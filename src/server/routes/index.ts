@@ -5,7 +5,8 @@ import { PageController } from "../controllers/page-controller";
 export function createRouter(
   apiController: ApiController,
   pageController: PageController,
-  wizardUploadMiddleware: express.RequestHandler
+  wizardUploadMiddleware: express.RequestHandler,
+  modelUploadMiddleware: express.RequestHandler
 ): express.Router {
   const router = express.Router();
 
@@ -15,6 +16,7 @@ export function createRouter(
   router.get("/batches", pageController.batches);
   router.get("/batches/:id", pageController.batchDetail);
   router.get("/clients", pageController.clients);
+  router.get("/models", pageController.models);
   router.get("/review/:id", pageController.review);
 
   router.get("/api/products", apiController.getProducts);
@@ -24,6 +26,9 @@ export function createRouter(
   router.get("/api/status", apiController.getStatus);
   router.get("/api/bootstrap", apiController.getBootstrap);
   router.post("/api/clients", apiController.createClient);
+  router.post("/api/models", modelUploadMiddleware, apiController.createModel);
+  router.post("/api/models/:id", modelUploadMiddleware, apiController.updateModel);
+  router.post("/api/models/:id/delete", apiController.deleteModel);
   router.post("/api/wizard/setup", wizardUploadMiddleware, apiController.setupBatch);
   router.post("/api/batch/save-state", apiController.saveBatch);
   router.post("/api/batches/:id/open", apiController.openBatch);
@@ -34,7 +39,6 @@ export function createRouter(
   router.post("/api/product/:id/approve", apiController.approve);
   router.post("/api/product/:id/finalize-approval", apiController.finalizeApproval);
   router.post("/api/product/:id/regenerate/:poseId", apiController.regenerate);
-  router.post("/api/product/:id/change-model", apiController.changeModel);
 
   return router;
 }

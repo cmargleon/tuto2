@@ -25,10 +25,71 @@ export interface FalProviderSettings {
   enableSafetyChecker: boolean;
 }
 
+export type BackgroundMode =
+  | "white"
+  | "bokeh"
+  | "studio"
+  | "exterior_natural"
+  | "exterior_urbano"
+  | "interior_lifestyle"
+  | "custom";
+
+export type BackgroundLightingStyle =
+  | "clear_soft_daylight"
+  | "warm_soft_daylight"
+  | "cool_soft_daylight"
+  | "studio_diffused"
+  | "high_key"
+  | "editorial"
+  | "dramatic"
+  | "overcast_soft"
+  | "golden_hour";
+
+export type BackgroundScene =
+  | "none"
+  | "arquitectura_moderna"
+  | "calle_limpia"
+  | "terraza"
+  | "fachada_neutra"
+  | "bosque"
+  | "mar"
+  | "sendero"
+  | "jardin"
+  | "campo"
+  | "living_minimalista"
+  | "estudio_creativo"
+  | "cafe_elegante"
+  | "vestidor"
+  | "gimnasio_premium"
+  | "papel_seamless"
+  | "cemento_suave";
+
+export type BackgroundProminence = "minimal" | "medium" | "editorial";
+export type BackgroundContrast = "soft" | "medium" | "high";
+export type BackgroundRealism = "catalogo_realista" | "campana_lifestyle";
+export type BackgroundSeparation = "standard" | "strong" | "maximum";
+
+export interface BatchBackgroundConfig {
+  mode: BackgroundMode;
+  bokehIntensity: number;
+  lightingStyle: BackgroundLightingStyle;
+  scene: BackgroundScene;
+  dominantColor: string;
+  backgroundProminence: BackgroundProminence;
+  contrast: BackgroundContrast;
+  realismLevel: BackgroundRealism;
+  subjectSeparation: BackgroundSeparation;
+  noPeople: boolean;
+  noProps: boolean;
+  noText: boolean;
+  customInstructions: string;
+}
+
 export interface BatchPromptConfig {
   systemPrompt: string;
   generalPrompt: string;
   posePrompts: Record<string, string>;
+  backgroundConfig: BatchBackgroundConfig;
   providerSettings: FalProviderSettings;
 }
 
@@ -38,6 +99,45 @@ export interface ClientRecord {
   notes?: string;
   batchCount?: number;
   activeBatchCount?: number;
+}
+
+export type ModelGender = "female" | "male";
+export type ModelAgeGroup =
+  | "nino"
+  | "adolescente"
+  | "adulto_joven"
+  | "adulto"
+  | "jubilado"
+  | "anciano";
+
+export interface CatalogModelPhoto {
+  photoId: string;
+  modelId: string;
+  filePath: string;
+  sortOrder: number;
+}
+
+export interface CatalogModel {
+  modelId: string;
+  name: string;
+  clientId?: string;
+  clientName?: string;
+  ageGroup?: ModelAgeGroup;
+  gender: ModelGender;
+  includesFullBody: boolean;
+  includesFace: boolean;
+  includesHands: boolean;
+  includesFeet: boolean;
+  includesSwimwear: boolean;
+  createdAt: string;
+  updatedAt: string;
+  photos: CatalogModelPhoto[];
+}
+
+export interface BatchModelSelection {
+  batchId: string;
+  modelId: string;
+  selectedPhotoIds: string[];
 }
 
 export interface ProductPromptOverrides {
@@ -101,7 +201,6 @@ export interface ProductManifest {
   sourceName: string;
   sku?: string;
   garmentImages: string[];
-  selectedModel: string;
   promptOverrides?: ProductPromptOverrides;
   category: ProductCategory;
   poses: ProductPoseState[];
@@ -118,7 +217,6 @@ export interface ProductListItem {
   status: ProductStatus;
   approvedCount: number;
   totalApprovedNeeded: number;
-  selectedModel: string;
   category: ProductCategory;
 }
 
@@ -195,6 +293,8 @@ export interface BatchManifest {
   stateRoot: string;
   notes?: string;
   lastError?: string;
+  selectedModelId?: string;
+  selectedModelPhotoIds?: string[];
 }
 
 export interface BatchSnapshot {
@@ -266,8 +366,8 @@ export interface GenerateVariantsInput {
   poseId: string;
   poseLabel: string;
   prompt: string;
+  modelImages: ProviderImageInput[];
   garmentImages: ProviderImageInput[];
-  modelImage?: ProviderImageInput;
   poseImage: ProviderImageInput;
   variantCount: number;
   providerSettings?: FalProviderSettings;
