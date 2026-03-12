@@ -1,17 +1,18 @@
 # Auto2 MVP local
 
-MVP local en `Node.js + Express + TypeScript` para generar y revisar fotos de catalogo desde carpetas locales, usando `fal.ai` con `Seedream 4.5` y dejando el proveedor encapsulado para poder cambiarlo despues.
+MVP local en `Node.js + Express + TypeScript` para generar y revisar fotos de catalogo desde carpetas locales, usando `fal.ai` y la API oficial de OpenAI para imagenes, dejando el proveedor encapsulado para poder cambiarlo despues.
 
 ## Decision tecnica documentada
 
-Este repo ya no usa Gemini ni Vertex AI. El provider activo es `fal.ai`.
+Este repo ya no usa Gemini ni Vertex AI. El proyecto soporta `fal.ai` y OpenAI oficial para modelos de imagen.
 
 Decision actual del provider:
 
-- Proveedor actual: `fal.ai`
-- SDK oficial usado: `@fal-ai/client`
-- Metodo oficial usado: `fal.subscribe(...)`
+- Proveedores soportados:
+  - `fal.ai` via `@fal-ai/client` y `fal.subscribe(...)`
+  - OpenAI oficial via `POST /v1/images/edits`
 - Modelo por defecto configurable: `fal-ai/bytedance/seedream/v4.5/edit`
+- Modelo OpenAI soportado en el selector: `gpt-image-1.5`
 - Entrada multimodal usada: `prompt + image_urls`
 - Transporte de imagenes de entrada: `Data URI base64`
 - Salida esperada: `images[].url`
@@ -19,8 +20,8 @@ Decision actual del provider:
 
 Por que esta decision:
 
-- La documentacion oficial actual de fal.ai para `Seedream 4.5 edit` acepta multiples imagenes en `image_urls`.
-- Ese flujo encaja mejor con este MVP porque necesitamos mandar `modelo + prenda + pose`.
+- `fal.ai` encaja bien para composicion multimodal con multiples imagenes.
+- OpenAI oficial se usa directamente cuando eliges un modelo `gpt-image-*` en el selector.
 - La interfaz interna del proyecto no cambia: solo cambia el adapter.
 
 Limitaciones reales documentadas en este MVP:
@@ -31,6 +32,7 @@ Limitaciones reales documentadas en este MVP:
 - No se garantiza perfil `Adobe RGB`. El MVP guarda JPEG estandar procesado con `Sharp`.
 - El resultado final se normaliza localmente a `1000x1000`.
 - El endpoint de edicion de Seedream 4.5 admite hasta `10` imagenes de entrada; si excedes eso, el provider lanza error explicito.
+- Si OpenAI rechaza un `modelId` concreto, el error se devuelve tal cual desde la API oficial.
 
 ## Arquitectura
 
@@ -152,6 +154,7 @@ RETRY_COUNT=2
 DEFAULT_CATEGORY=parte_alta
 FAL_KEY=tu_api_key
 FAL_MODEL=fal-ai/bytedance/seedream/v4.5/edit
+OPENAI_API_KEY=tu_api_key_de_openai
 ```
 
 ## Arranque

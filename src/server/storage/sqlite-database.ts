@@ -125,6 +125,7 @@ CREATE TABLE IF NOT EXISTS product_poses (
   variant_count INTEGER NOT NULL,
   status TEXT NOT NULL,
   regenerate_count INTEGER NOT NULL DEFAULT 0,
+  provider_model_id TEXT NOT NULL DEFAULT '',
   last_error TEXT,
   prompt_override TEXT NOT NULL DEFAULT '',
   last_prompt_used TEXT NOT NULL DEFAULT '',
@@ -136,6 +137,7 @@ CREATE TABLE IF NOT EXISTS product_poses (
 CREATE TABLE IF NOT EXISTS outputs (
   batch_id TEXT NOT NULL REFERENCES batches(batch_id) ON DELETE CASCADE,
   output_id TEXT NOT NULL,
+  usage_id TEXT,
   product_id TEXT NOT NULL,
   pose_id TEXT NOT NULL,
   sort_order INTEGER NOT NULL DEFAULT 0,
@@ -275,9 +277,121 @@ CREATE TABLE IF NOT EXISTS model_photos (
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS analytics_events (
+  event_id TEXT PRIMARY KEY,
+  batch_id TEXT NOT NULL REFERENCES batches(batch_id) ON DELETE CASCADE,
+  client_id TEXT REFERENCES clients(client_id) ON DELETE SET NULL,
+  product_id TEXT,
+  pose_id TEXT,
+  category TEXT,
+  provider TEXT,
+  provider_model_id TEXT,
+  event_type TEXT NOT NULL,
+  event_source TEXT,
+  request_id TEXT,
+  timestamp TEXT NOT NULL,
+  duration_ms INTEGER,
+  cost_estimate REAL,
+  provider_reported_cost REAL,
+  metadata_json TEXT
+);
+
+CREATE TABLE IF NOT EXISTS cost_snapshots (
+  snapshot_key TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  provider_model_id TEXT NOT NULL,
+  size_tier TEXT NOT NULL,
+  unit_cost REAL NOT NULL,
+  currency TEXT NOT NULL,
+  unit_label TEXT NOT NULL,
+  source TEXT NOT NULL,
+  notes TEXT,
+  effective_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS generation_usage (
+  usage_id TEXT PRIMARY KEY,
+  batch_id TEXT NOT NULL REFERENCES batches(batch_id) ON DELETE CASCADE,
+  client_id TEXT REFERENCES clients(client_id) ON DELETE SET NULL,
+  product_id TEXT NOT NULL,
+  pose_id TEXT NOT NULL,
+  category TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  provider_model_id TEXT NOT NULL,
+  request_id TEXT,
+  source TEXT NOT NULL,
+  status TEXT NOT NULL,
+  system_prompt TEXT NOT NULL,
+  user_prompt TEXT NOT NULL,
+  final_prompt TEXT NOT NULL,
+  prompt_hash TEXT NOT NULL,
+  prompt_excerpt TEXT NOT NULL,
+  image_size_label TEXT NOT NULL,
+  seed INTEGER,
+  sync_mode INTEGER NOT NULL DEFAULT 0,
+  enable_safety_checker INTEGER NOT NULL DEFAULT 1,
+  background_mode TEXT,
+  selected_model_id TEXT,
+  source_photo_id TEXT,
+  selected_photo_ids_json TEXT NOT NULL DEFAULT '[]',
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  duration_ms INTEGER,
+  output_count INTEGER NOT NULL DEFAULT 0,
+  cost_snapshot_key TEXT REFERENCES cost_snapshots(snapshot_key) ON DELETE SET NULL,
+  cost_estimate REAL NOT NULL DEFAULT 0,
+  provider_reported_cost REAL,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  approved_at TEXT,
+  error_message TEXT,
+  metadata_json TEXT,
+  FOREIGN KEY (batch_id, product_id) REFERENCES products(batch_id, product_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS daily_analytics_rollups (
+  rollup_key TEXT PRIMARY KEY,
+  rollup_date TEXT NOT NULL,
+  client_id TEXT,
+  provider_model_id TEXT,
+  generations INTEGER NOT NULL DEFAULT 0,
+  regenerations INTEGER NOT NULL DEFAULT 0,
+  errors INTEGER NOT NULL DEFAULT 0,
+  approvals INTEGER NOT NULL DEFAULT 0,
+  cost_estimate_total REAL NOT NULL DEFAULT 0,
+  provider_reported_cost_total REAL NOT NULL DEFAULT 0,
+  avg_duration_ms REAL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS prompt_effectiveness (
+  prompt_hash TEXT PRIMARY KEY,
+  prompt_excerpt TEXT NOT NULL,
+  usage_count INTEGER NOT NULL DEFAULT 0,
+  regeneration_count INTEGER NOT NULL DEFAULT 0,
+  success_count INTEGER NOT NULL DEFAULT 0,
+  error_count INTEGER NOT NULL DEFAULT 0,
+  approval_count INTEGER NOT NULL DEFAULT 0,
+  avg_duration_ms REAL,
+  avg_approval_latency_ms REAL,
+  total_estimated_cost REAL NOT NULL DEFAULT 0,
+  last_used_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_events_timestamp ON analytics_events(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_type ON analytics_events(event_type, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_analytics_events_batch ON analytics_events(batch_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_generation_usage_started ON generation_usage(started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_generation_usage_batch ON generation_usage(batch_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_generation_usage_client ON generation_usage(client_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_generation_usage_model ON generation_usage(provider_model_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_generation_usage_category ON generation_usage(category, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_generation_usage_status ON generation_usage(status, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_generation_usage_prompt_hash ON generation_usage(prompt_hash, started_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cost_snapshots_model_tier ON cost_snapshots(provider_model_id, size_tier);
 `;
 
-const CURRENT_USER_VERSION = 4;
+const CURRENT_USER_VERSION = 6;
 
 export class SqliteDatabase {
   private db: Database.Database | null = null;
@@ -322,8 +436,21 @@ function migrateSchemaIfNeeded(db: Database.Database): void {
   const hasLegacyModelAge = modelColumns.some((column) => column.name === "age");
   const hasModelAgeGroup = modelColumns.some((column) => column.name === "age_group");
   const hasModelSwimwear = modelColumns.some((column) => column.name === "includes_swimwear");
+  const poseColumns = db.pragma("table_info(product_poses)") as Array<{ name: string }>;
+  const hasPoseProviderModelId = poseColumns.some((column) => column.name === "provider_model_id");
+  const outputColumns = db.pragma("table_info(outputs)") as Array<{ name: string }>;
+  const hasOutputUsageId = outputColumns.some((column) => column.name === "usage_id");
 
-  if (currentVersion >= CURRENT_USER_VERSION && !outputsUsesLegacyPrimaryKey && hasBatchClientId && hasBackgroundConfigJson && hasModelAgeGroup && hasModelSwimwear) {
+  if (
+    currentVersion >= CURRENT_USER_VERSION
+    && !outputsUsesLegacyPrimaryKey
+    && hasBatchClientId
+    && hasBackgroundConfigJson
+    && hasModelAgeGroup
+    && hasModelSwimwear
+    && hasPoseProviderModelId
+    && hasOutputUsageId
+  ) {
     return;
   }
 
@@ -401,6 +528,18 @@ function migrateSchemaIfNeeded(db: Database.Database): void {
     if (!hasModelSwimwear) {
       db.exec(`
         ALTER TABLE models ADD COLUMN includes_swimwear INTEGER NOT NULL DEFAULT 0;
+      `);
+    }
+
+    if (!hasPoseProviderModelId) {
+      db.exec(`
+        ALTER TABLE product_poses ADD COLUMN provider_model_id TEXT NOT NULL DEFAULT '';
+      `);
+    }
+
+    if (!hasOutputUsageId) {
+      db.exec(`
+        ALTER TABLE outputs ADD COLUMN usage_id TEXT;
       `);
     }
 

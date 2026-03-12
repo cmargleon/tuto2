@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Analytics</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body class="dashboard-body" data-page="analytics">
+    <div class="dashboard-layout">
+      <%- include("partials/dashboard-sidebar", {
+        activeMenu,
+        isSidebarCollapsed: false,
+        product: null,
+        allProducts: [],
+        basename,
+        fileUrl,
+        explicitSelections: 0
+      }) %>
+
+      <main class="dashboard-content">
+        <section class="topbar app-topbar">
+          <div class="topbar-title">
+            <p class="eyebrow">Performance</p>
+            <h2>Analytics</h2>
+            <p class="muted">Mide regeneraciones, costo, tiempos, prompts, friccion por cliente y rendimiento por modelo.</p>
+          </div>
+        </section>
+
+        <section class="summary-card dashboard-card">
+          <form class="analytics-filter-form" method="get" action="/analytics">
+            <div class="prompt-shell compact-shell">
+              <label for="analytics-from">Desde</label>
+              <input id="analytics-from" class="wizard-input" type="date" name="from" value="<%= dashboard.filters.from || '' %>" />
+            </div>
+            <div class="prompt-shell compact-shell">
+              <label for="analytics-to">Hasta</label>
+              <input id="analytics-to" class="wizard-input" type="date" name="to" value="<%= dashboard.filters.to || '' %>" />
+            </div>
+            <div class="prompt-shell compact-shell">
+              <label for="analytics-client">Cliente</label>
+              <select id="analytics-client" class="wizard-select" name="clientId">
+                <option value="">Todos</option>
+                <% for (const client of filterOptions.clients) { %>
+                  <option value="<%= client.clientId %>" <%= dashboard.filters.clientId === client.clientId ? "selected" : "" %>><%= client.name %></option>
+                <% } %>
+              </select>
+            </div>
+            <div class="prompt-shell compact-shell">
+              <label for="analytics-model">Modelo IA</label>
+              <select id="analytics-model" class="wizard-select" name="providerModelId">
+                <option value="">Todos</option>
+                <% for (const model of filterOptions.models) { %>
+                  <option value="<%= model %>" <%= dashboard.filters.providerModelId === model ? "selected" : "" %>><%= model %></option>
+                <% } %>
+              </select>
+            </div>
+            <div class="prompt-shell compact-shell">
+              <label for="analytics-category">Categoria</label>
+              <select id="analytics-category" class="wizard-select" name="category">
+                <option value="all">Todas</option>
+                <% for (const category of filterOptions.categories) { %>
+                  <option value="<%= category %>" <%= dashboard.filters.category === category ? "selected" : "" %>><%= category %></option>
+                <% } %>
+              </select>
+            </div>
+            <div class="prompt-shell compact-shell">
+              <label for="analytics-status">Estado batch</label>
+              <select id="analytics-status" class="wizard-select" name="status">
+                <% for (const status of filterOptions.statuses) { %>
+                  <option value="<%= status %>" <%= (dashboard.filters.status || "all") === status ? "selected" : "" %>><%= status %></option>
+                <% } %>
+              </select>
+            </div>
+            <div class="prompt-shell compact-shell">
+              <label for="analytics-batch">Batch</label>
+              <select id="analytics-batch" class="wizard-select" name="batchId">
+                <option value="">Todos</option>
+                <% for (const batch of filterOptions.batches) { %>
+                  <option value="<%= batch.batchId %>" <%= dashboard.filters.batchId === batch.batchId ? "selected" : "" %>><%= batch.name %></option>
+                <% } %>
+              </select>
+            </div>
+            <div class="batch-filter-actions">
+              <button type="submit">Aplicar</button>
+              <a href="/analytics" class="secondary">Limpiar</a>
+            </div>
+          </form>
+        </section>
+
+        <section class="analytics-kpi-grid">
+          <article class="summary-card dashboard-card analytics-kpi-card"><p class="summary-kicker">Generaciones</p><strong><%= dashboard.kpis.totalGenerations %></strong></article>
+          <article class="summary-card dashboard-card analytics-kpi-card"><p class="summary-kicker">Regeneraciones</p><strong><%= dashboard.kpis.totalRegenerations %></strong></article>
+          <article class="summary-card dashboard-card analytics-kpi-card"><p class="summary-kicker">Tasa regen</p><strong><%= (dashboard.kpis.regenerationRate * 100).toFixed(1) %>%</strong></article>
+          <article class="summary-card dashboard-card analytics-kpi-card"><p class="summary-kicker">Costo total</p><strong>$<%= dashboard.kpis.totalCostEstimate.toFixed(2) %></strong></article>
+          <article class="summary-card dashboard-card analytics-kpi-card"><p class="summary-kicker">Costo mes</p><strong>$<%= dashboard.kpis.currentMonthCostEstimate.toFixed(2) %></strong></article>
+          <article class="summary-card dashboard-card analytics-kpi-card"><p class="summary-kicker">1ra aprobacion</p><strong><%= (dashboard.kpis.firstPassApprovalRate * 100).toFixed(1) %>%</strong></article>
+          <article class="summary-card dashboard-card analytics-kpi-card"><p class="summary-kicker">Tiempo medio</p><strong><%= Math.round(dashboard.kpis.averageDurationMs) %> ms</strong></article>
+          <article class="summary-card dashboard-card analytics-kpi-card"><p class="summary-kicker">Costo / producto</p><strong>$<%= dashboard.kpis.averageCostPerProduct.toFixed(2) %></strong></article>
+        </section>
+
+        <section class="analytics-chart-grid">
+          <article class="summary-card dashboard-card analytics-panel">
+            <div class="panel-head"><div><p class="summary-kicker">Serie</p><h3>Regeneraciones por dia</h3></div></div>
+            <div class="analytics-bar-list">
+              <% for (const row of dashboard.charts.regenerationsByDay) { %>
+                <div class="analytics-bar-row"><span><%= row.label %></span><div class="analytics-bar-track"><div class="analytics-bar-fill" style="width:<%= Math.max(6, row.value * 10) %>%"></div></div><strong><%= row.value %></strong></div>
+              <% } %>
+            </div>
+          </article>
+          <article class="summary-card dashboard-card analytics-panel">
+            <div class="panel-head"><div><p class="summary-kicker">Serie</p><h3>Costo por dia</h3></div></div>
+            <div class="analytics-bar-list">
+              <% for (const row of dashboard.charts.costByDay) { %>
+                <div class="analytics-bar-row"><span><%= row.label %></span><div class="analytics-bar-track"><div class="analytics-bar-fill" style="width:<%= Math.max(6, row.value * 10) %>%"></div></div><strong>$<%= row.value.toFixed(2) %></strong></div>
+              <% } %>
+            </div>
+          </article>
+          <article class="summary-card dashboard-card analytics-panel">
+            <div class="panel-head"><div><p class="summary-kicker">Breakdown</p><h3>Costo por cliente</h3></div></div>
+            <div class="analytics-bar-list">
+              <% for (const row of dashboard.charts.costByClient) { %>
+                <div class="analytics-bar-row"><span><%= row.label %></span><div class="analytics-bar-track"><div class="analytics-bar-fill" style="width:<%= Math.max(6, row.value * 10) %>%"></div></div><strong>$<%= row.value.toFixed(2) %></strong></div>
+              <% } %>
+            </div>
+          </article>
+          <article class="summary-card dashboard-card analytics-panel">
+            <div class="panel-head"><div><p class="summary-kicker">Breakdown</p><h3>Uso por modelo IA</h3></div></div>
+            <div class="analytics-bar-list">
+              <% for (const row of dashboard.charts.usageByModel) { %>
+                <div class="analytics-bar-row"><span><%= row.label %></span><div class="analytics-bar-track"><div class="analytics-bar-fill" style="width:<%= Math.max(6, row.value * 10) %>%"></div></div><strong><%= row.value %></strong></div>
+              <% } %>
+            </div>
+          </article>
+          <article class="summary-card dashboard-card analytics-panel">
+            <div class="panel-head"><div><p class="summary-kicker">Breakdown</p><h3>Errores por modelo IA</h3></div></div>
+            <div class="analytics-bar-list">
+              <% for (const row of dashboard.charts.errorsByModel) { %>
+                <div class="analytics-bar-row"><span><%= row.label %></span><div class="analytics-bar-track"><div class="analytics-bar-fill" style="width:<%= Math.max(6, row.value * 10) %>%"></div></div><strong><%= row.value %></strong></div>
+              <% } %>
+            </div>
+          </article>
+          <article class="summary-card dashboard-card analytics-panel">
+            <div class="panel-head"><div><p class="summary-kicker">Breakdown</p><h3>Categorias mas dificiles</h3></div></div>
+            <div class="analytics-bar-list">
+              <% for (const row of dashboard.charts.categoryDifficulty) { %>
+                <div class="analytics-bar-row"><span><%= row.label %></span><div class="analytics-bar-track"><div class="analytics-bar-fill" style="width:<%= Math.max(6, row.value * 10) %>%"></div></div><strong><%= row.value %></strong></div>
+              <% } %>
+            </div>
+          </article>
+        </section>
+
+        <section class="analytics-table-grid">
+          <% const tableSections = [
+            { title: "Top clientes por gasto", rows: dashboard.tables.topClientsByCost, cost: true },
+            { title: "Top clientes por friccion", rows: dashboard.tables.topClientsByFriction },
+            { title: "Top productos con mas regeneraciones", rows: dashboard.tables.topProductsByRegenerations },
+            { title: "Batches mas caros", rows: dashboard.tables.mostExpensiveBatches, cost: true },
+            { title: "Uso de fondos", rows: dashboard.tables.backgroundUsage },
+            { title: "Uso de fotos de modelo", rows: dashboard.tables.modelPhotoUsage },
+            { title: "Rendimiento de settings", rows: dashboard.tables.settingsPerformance }
+          ]; %>
+          <% for (const section of tableSections) { %>
+            <article class="summary-card dashboard-card analytics-panel">
+              <div class="panel-head"><div><p class="summary-kicker">Tabla</p><h3><%= section.title %></h3></div></div>
+              <div class="analytics-table-shell">
+                <table class="analytics-table">
+                  <thead><tr><th>Item</th><th>Valor</th><th>Secundario</th></tr></thead>
+                  <tbody>
+                    <% for (const row of section.rows) { %>
+                      <tr>
+                        <td><%= row.label %></td>
+                        <td><%= section.cost ? `$${row.value.toFixed(2)}` : row.value %></td>
+                        <td><%= typeof row.secondaryValue === "number" ? row.secondaryValue.toFixed(2) : "-" %></td>
+                      </tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          <% } %>
+
+          <% const promptSections = [
+            { title: "Prompts mas usados", rows: dashboard.tables.topPromptsUsed },
+            { title: "Prompts que mas regeneran", rows: dashboard.tables.topPromptsByRegeneration },
+            { title: "Prompts aprobados mas rapido", rows: dashboard.tables.fastestApprovedPrompts }
+          ]; %>
+          <% for (const section of promptSections) { %>
+            <article class="summary-card dashboard-card analytics-panel analytics-panel-span">
+              <div class="panel-head"><div><p class="summary-kicker">Prompts</p><h3><%= section.title %></h3></div></div>
+              <div class="analytics-table-shell">
+                <table class="analytics-table">
+                  <thead><tr><th>Prompt</th><th>Usos</th><th>Regens</th><th>Exito</th><th>Error</th><th>Aprob.</th><th>Costo</th></tr></thead>
+                  <tbody>
+                    <% for (const row of section.rows) { %>
+                      <tr>
+                        <td><%= row.promptExcerpt %></td>
+                        <td><%= row.usageCount %></td>
+                        <td><%= row.regenerationCount %></td>
+                        <td><%= row.successCount %></td>
+                        <td><%= row.errorCount %></td>
+                        <td><%= row.approvalCount %></td>
+                        <td>$<%= row.totalEstimatedCost.toFixed(2) %></td>
+                      </tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          <% } %>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      window.__PAGE_MODEL__ = { page: "analytics" };
+    </script>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>

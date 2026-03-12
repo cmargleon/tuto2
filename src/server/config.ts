@@ -36,13 +36,16 @@ export const config = {
   retryCount: readNumber("RETRY_COUNT", 2),
   defaultCategory: process.env.DEFAULT_CATEGORY ?? "parte_alta",
   falKey: process.env.FAL_KEY ?? "",
-  falModel: process.env.FAL_MODEL ?? "fal-ai/bytedance/seedream/v4.5/edit"
+  falModel: process.env.FAL_MODEL ?? "fal-ai/bytedance/seedream/v4.5/edit",
+  openaiApiKey: process.env.OPENAI_API_KEY ?? ""
 };
 
 export const falModelOptions = readList("FAL_MODEL_OPTIONS", [
   "fal-ai/bytedance/seedream/v4.5/edit",
   "fal-ai/nano-banana/edit",
-  "fal-ai/gemini-3.1-flash-image-preview/edit"
+  "fal-ai/nano-banana-pro/edit",
+  "fal-ai/gemini-3.1-flash-image-preview/edit",
+  "gpt-image-1.5"
 ]);
 
 export const paths = {

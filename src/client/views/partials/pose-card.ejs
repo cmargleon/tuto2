@@ -72,13 +72,13 @@
   <div class="prompt-box">
     <label for="prompt-<%= pose.poseId %>">Prompt para regenerar esta pose</label>
     <div class="prompt-shell">
-      <textarea id="prompt-<%= pose.poseId %>" class="prompt-editor" data-pose-id="<%= pose.poseId %>" rows="5"><%= pose.promptOverride || pose.lastPromptUsed || pose.promptPreview || '' %></textarea>
+      <textarea id="prompt-<%= pose.poseId %>" class="prompt-editor" data-pose-id="<%= pose.poseId %>" rows="5"><%= pose.promptOverride || pose.promptPreview || '' %></textarea>
       <div class="prompt-footer">
-        <p class="muted prompt-hint" data-pose-id="<%= pose.poseId %>">Si lo dejas vacio, se usa el prompt general y el extra de esa pose si existen.</p>
-        <div class="prompt-actions-row">
+        <p class="muted prompt-hint" data-pose-id="<%= pose.poseId %>">Este cuadro parte del system prompt + prompt general + prompt especifico de esta imagen.</p>
+      <div class="prompt-actions-row">
           <select class="wizard-select provider-model-select" data-pose-id="<%= pose.poseId %>">
             <% for (const modelId of falModelOptions) { %>
-              <option value="<%= modelId %>" <%= modelId === currentProviderModelId ? "selected" : "" %>><%= modelId %></option>
+              <option value="<%= modelId %>" <%= modelId === (pose.providerModelId || currentProviderModelId) ? "selected" : "" %>><%= modelId %></option>
             <% } %>
           </select>
           <button class="secondary regenerate-button regenerate-button-bottom" data-pose-id="<%= pose.poseId %>">Regenerar imagen</button>

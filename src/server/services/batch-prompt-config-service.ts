@@ -22,8 +22,8 @@ export const defaultPromptConfig: BatchPromptConfig = {
     customInstructions: ""
   },
   providerSettings: {
-    modelId: "fal-ai/nano-banana/edit",
-    imageSize: "square_hd",
+    modelId: "fal-ai/bytedance/seedream/v4.5/edit",
+    imageSize: "portrait_16_9",
     seed: null,
     syncMode: false,
     enableSafetyChecker: true

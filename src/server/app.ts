@@ -8,6 +8,8 @@ import { PromptService } from "./services/prompt-service";
 import { InputScannerService } from "./services/input-scanner-service";
 import { ProductService } from "./services/product-service";
 import { FalSeedreamImageProvider } from "./providers/fal-seedream-image-provider";
+import { OpenAIImageProvider } from "./providers/openai-image-provider";
+import { RoutedImageProvider } from "./providers/routed-image-provider";
 import { JobRunner } from "./jobs/job-runner";
 import { BootstrapService } from "./services/bootstrap-service";
 import { ApiController } from "./controllers/api-controller";
@@ -22,19 +24,27 @@ import { RuntimeStateRepository } from "./storage/runtime-state-repository";
 import { BatchRepository } from "./storage/batch-repository";
 import { LegacyJsonMigrationService } from "./services/legacy-json-migration-service";
 import { JobRepository } from "./storage/job-repository";
+import { AnalyticsRepository } from "./storage/analytics-repository";
+import { AnalyticsService } from "./services/analytics-service";
+import { defaultCostSnapshots } from "./config/analytics-pricing";
 
 async function main(): Promise<void> {
   sqliteDatabase.initialize();
   const runtimeStateRepository = new RuntimeStateRepository();
   const batchRepository = new BatchRepository();
   const jobRepository = new JobRepository();
+  const analyticsRepository = new AnalyticsRepository();
+  const analyticsService = new AnalyticsService(analyticsRepository);
   const repository = new ProductRepository(runtimeStateRepository);
   const scanner = new InputScannerService(repository, runtimeStateRepository, batchRepository);
   const promptService = new PromptService();
   const batchPromptConfigService = new BatchPromptConfigService(batchRepository, runtimeStateRepository);
-  const batchHistoryService = new BatchHistoryService(batchRepository, repository, runtimeStateRepository);
+  const batchHistoryService = new BatchHistoryService(batchRepository, repository, runtimeStateRepository, analyticsService);
   const legacyJsonMigrationService = new LegacyJsonMigrationService(batchRepository, repository, runtimeStateRepository);
-  const provider = new FalSeedreamImageProvider();
+  const provider = new RoutedImageProvider(
+    new FalSeedreamImageProvider(),
+    new OpenAIImageProvider()
+  );
   const productService = new ProductService(
     repository,
     scanner,
@@ -43,7 +53,8 @@ async function main(): Promise<void> {
     batchPromptConfigService,
     batchHistoryService,
     jobRepository,
-    runtimeStateRepository
+    runtimeStateRepository,
+    analyticsService
   );
   const jobRunner = new JobRunner(productService, runtimeStateRepository, jobRepository, config.maxConcurrency);
   const bootstrapService = new BootstrapService(scanner, repository, productService, jobRunner);
@@ -52,6 +63,7 @@ async function main(): Promise<void> {
   const pageController = new PageController(productService);
 
   await legacyJsonMigrationService.migrateIfNeeded();
+  analyticsService.seedDefaultCostSnapshots(defaultCostSnapshots);
   batchRepository.ensureDefaultClients([
     {
       clientId: "barbie",
@@ -71,7 +83,7 @@ async function main(): Promise<void> {
   const wizardUploadMiddleware = upload.fields([
     { name: "garmentFiles", maxCount: 200 }
   ]);
-  const modelUploadMiddleware = upload.array("modelPhotos", 10);
+  const modelUploadMiddleware = upload.array("modelPhotos", 20);
   app.set("view engine", "ejs");
   app.set("views", path.join(process.cwd(), "src", "client", "views"));
   app.use(express.json({ limit: "10mb" }));

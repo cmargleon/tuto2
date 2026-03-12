@@ -159,6 +159,7 @@ export interface PoseInput {
   label: string;
   filePath: string;
   description: string;
+  sourcePhotoId?: string;
 }
 
 export interface ProductPoseState {
@@ -166,6 +167,7 @@ export interface ProductPoseState {
   variantCount: number;
   status: PoseStatus;
   regenerateCount: number;
+  providerModelId?: string;
   lastError?: string;
   promptOverride?: string;
   lastPromptUsed?: string;
@@ -173,6 +175,7 @@ export interface ProductPoseState {
 }
 
 export interface GeneratedImageMetadata {
+  usageId?: string;
   prompt: string;
   poseId: string;
   variantKey: string;
@@ -181,11 +184,14 @@ export interface GeneratedImageMetadata {
   endpoint: string;
   timestamp: string;
   responseId?: string;
+  costEstimate?: number;
+  providerReportedCost?: number;
   notes?: string[];
 }
 
 export interface GeneratedOutput {
   outputId: string;
+  usageId?: string;
   poseId: string;
   variantKey: "a";
   fileName: string;
@@ -252,9 +258,13 @@ export interface BatchEvent {
     | "batch_duplicated"
     | "generation_started"
     | "generation_finished"
+    | "generation_failed"
+    | "pose_approved"
     | "product_approved"
+    | "batch_completed"
     | "pose_regenerated"
     | "model_changed"
+    | "provider_model_changed"
     | "prompt_changed";
   timestamp: string;
   message: string;
@@ -354,6 +364,181 @@ export interface PromptHistoryEntry {
   createdAt: string;
 }
 
+export type AnalyticsEventType =
+  | "batch_created"
+  | "batch_activated"
+  | "batch_saved"
+  | "batch_archived"
+  | "batch_duplicated"
+  | "generation_started"
+  | "generation_finished"
+  | "generation_failed"
+  | "pose_regenerated"
+  | "pose_approved"
+  | "product_approved"
+  | "batch_completed"
+  | "model_changed"
+  | "provider_model_changed"
+  | "prompt_changed";
+
+export interface AnalyticsEventRecord {
+  eventId: string;
+  batchId: string;
+  clientId?: string;
+  productId?: string;
+  poseId?: string;
+  category?: ProductCategory;
+  provider?: string;
+  providerModelId?: string;
+  eventType: AnalyticsEventType;
+  eventSource?: "system" | "user";
+  requestId?: string;
+  timestamp: string;
+  durationMs?: number;
+  costEstimate?: number;
+  providerReportedCost?: number;
+  metadata?: Record<string, string | number | boolean | null>;
+}
+
+export interface GenerationUsageRecord {
+  usageId: string;
+  batchId: string;
+  clientId?: string;
+  productId: string;
+  poseId: string;
+  category: ProductCategory;
+  provider: string;
+  providerModelId: string;
+  requestId?: string;
+  source: "generation" | "regeneration";
+  status: "running" | "success" | "error";
+  systemPrompt: string;
+  userPrompt: string;
+  finalPrompt: string;
+  promptHash: string;
+  promptExcerpt: string;
+  imageSizeLabel: string;
+  seed?: number | null;
+  syncMode: boolean;
+  enableSafetyChecker: boolean;
+  backgroundMode?: string;
+  selectedModelId?: string;
+  sourcePhotoId?: string;
+  selectedPhotoIds: string[];
+  startedAt: string;
+  finishedAt?: string;
+  durationMs?: number;
+  outputCount: number;
+  costSnapshotKey?: string;
+  costEstimate: number;
+  providerReportedCost?: number;
+  currency: string;
+  approvedAt?: string;
+  errorMessage?: string;
+  metadata?: Record<string, string | number | boolean | null>;
+}
+
+export interface CostSnapshotRecord {
+  snapshotKey: string;
+  provider: string;
+  providerModelId: string;
+  sizeTier: string;
+  unitCost: number;
+  currency: string;
+  unitLabel: string;
+  source: "local_estimate" | "provider_reported";
+  notes?: string;
+  effectiveAt: string;
+}
+
+export interface AnalyticsFilters {
+  from?: string;
+  to?: string;
+  clientId?: string;
+  providerModelId?: string;
+  category?: ProductCategory | "all";
+  batchId?: string;
+  status?: BatchStatus | "all";
+}
+
+export interface AnalyticsKpis {
+  totalGenerations: number;
+  totalRegenerations: number;
+  regenerationRate: number;
+  totalCostEstimate: number;
+  totalProviderReportedCost: number;
+  currentMonthCostEstimate: number;
+  averageCostPerImage: number;
+  averageCostPerProduct: number;
+  averageDurationMs: number;
+  averageBatchDurationMs: number;
+  averageApprovalTimeMs: number;
+  firstPassApprovalRate: number;
+  completedBatches: number;
+  abandonedBatches: number;
+  promptEdits: number;
+}
+
+export interface AnalyticsSeriesPoint {
+  label: string;
+  value: number;
+  secondaryValue?: number;
+}
+
+export interface AnalyticsBreakdownRow {
+  label: string;
+  value: number;
+  secondaryValue?: number;
+  meta?: string;
+}
+
+export interface AnalyticsPromptRow {
+  promptHash: string;
+  promptExcerpt: string;
+  usageCount: number;
+  regenerationCount: number;
+  successCount: number;
+  errorCount: number;
+  approvalCount: number;
+  averageDurationMs?: number;
+  averageApprovalLatencyMs?: number;
+  totalEstimatedCost: number;
+  lastUsedAt: string;
+}
+
+export interface AnalyticsDashboard {
+  filters: AnalyticsFilters;
+  kpis: AnalyticsKpis;
+  charts: {
+    regenerationsByDay: AnalyticsSeriesPoint[];
+    costByDay: AnalyticsSeriesPoint[];
+    costByClient: AnalyticsBreakdownRow[];
+    usageByModel: AnalyticsBreakdownRow[];
+    errorsByModel: AnalyticsBreakdownRow[];
+    categoryDifficulty: AnalyticsBreakdownRow[];
+  };
+  tables: {
+    topClientsByCost: AnalyticsBreakdownRow[];
+    topClientsByFriction: AnalyticsBreakdownRow[];
+    topProductsByRegenerations: AnalyticsBreakdownRow[];
+    topPromptsUsed: AnalyticsPromptRow[];
+    topPromptsByRegeneration: AnalyticsPromptRow[];
+    fastestApprovedPrompts: AnalyticsPromptRow[];
+    mostExpensiveBatches: AnalyticsBreakdownRow[];
+    backgroundUsage: AnalyticsBreakdownRow[];
+    modelPhotoUsage: AnalyticsBreakdownRow[];
+    settingsPerformance: AnalyticsBreakdownRow[];
+  };
+}
+
+export interface AnalyticsFilterOptions {
+  clients: ClientRecord[];
+  models: string[];
+  batches: Array<{ batchId: string; name: string }>;
+  categories: Array<ProductCategory>;
+  statuses: Array<BatchStatus | "all">;
+}
+
 export interface ProviderImageInput {
   mimeType: string;
   dataBase64: string;
@@ -384,5 +569,7 @@ export interface ImageGenerationProvider {
   readonly providerName: string;
   readonly modelName: string;
   readonly methodName: string;
+  resolveProviderName(modelId?: string): string;
+  resolveMethodName(modelId?: string): string;
   generateVariantsForPose(input: GenerateVariantsInput): Promise<ProviderGeneratedImage[]>;
 }

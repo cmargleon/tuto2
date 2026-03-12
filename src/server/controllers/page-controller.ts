@@ -1,5 +1,6 @@
 import path from "path";
 import type { Request, Response } from "express";
+import type { AnalyticsFilters } from "../../shared/types";
 import { ProductService } from "../services/product-service";
 import { config, falModelOptions } from "../config";
 import { PromptService } from "../services/prompt-service";
@@ -84,6 +85,25 @@ export class PageController {
         q: search || ""
       },
       clients: this.productService.listClients(),
+      basename: path.basename,
+      fileUrl: (filePath: string) => `/files?path=${encodeURIComponent(path.relative(config.dataDir, filePath).replaceAll("\\", "/"))}`
+    });
+  };
+
+  analytics = async (request: Request, response: Response): Promise<void> => {
+    const filters: AnalyticsFilters = {
+      from: readOptionalQuery(request.query.from) || undefined,
+      to: readOptionalQuery(request.query.to) || undefined,
+      clientId: readOptionalQuery(request.query.clientId) || undefined,
+      providerModelId: readOptionalQuery(request.query.providerModelId) || undefined,
+      category: (readOptionalQuery(request.query.category) || "all") as AnalyticsFilters["category"],
+      batchId: readOptionalQuery(request.query.batchId) || undefined,
+      status: (readOptionalQuery(request.query.status) || "all") as AnalyticsFilters["status"]
+    };
+    response.render("analytics", {
+      activeMenu: "analytics",
+      dashboard: this.productService.getAnalyticsDashboard(filters),
+      filterOptions: this.productService.getAnalyticsFilterOptions(),
       basename: path.basename,
       fileUrl: (filePath: string) => `/files?path=${encodeURIComponent(path.relative(config.dataDir, filePath).replaceAll("\\", "/"))}`
     });

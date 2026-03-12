@@ -30,6 +30,7 @@ type PoseRow = {
   variantCount: number;
   status: ProductPoseState["status"];
   regenerateCount: number;
+  providerModelId: string;
   lastError?: string | null;
   promptOverride: string;
   lastPromptUsed: string;
@@ -38,6 +39,7 @@ type PoseRow = {
 
 type OutputRow = {
   outputId: string;
+  usageId?: string | null;
   batchId: string;
   productId: string;
   poseId: string;
@@ -130,6 +132,7 @@ export class ProductRepository {
         variant_count AS variantCount,
         status,
         regenerate_count AS regenerateCount,
+        provider_model_id AS providerModelId,
         last_error AS lastError,
         prompt_override AS promptOverride,
         last_prompt_used AS lastPromptUsed,
@@ -142,6 +145,7 @@ export class ProductRepository {
     const outputRows = this.db.prepare(`
       SELECT
         output_id AS outputId,
+        usage_id AS usageId,
         batch_id AS batchId,
         product_id AS productId,
         pose_id AS poseId,
@@ -198,6 +202,7 @@ export class ProductRepository {
         variantCount: row.variantCount,
         status: row.status,
         regenerateCount: row.regenerateCount,
+        providerModelId: row.providerModelId || undefined,
         lastError: row.lastError ?? undefined,
         promptOverride: row.promptOverride,
         lastPromptUsed: row.lastPromptUsed,
@@ -211,6 +216,7 @@ export class ProductRepository {
       const bucket = outputsByProduct.get(row.productId) ?? [];
       bucket.push({
         outputId: row.outputId,
+        usageId: row.usageId ?? undefined,
         poseId: row.poseId,
         variantKey: row.variantKey,
         fileName: row.fileName,
@@ -343,9 +349,9 @@ export class ProductRepository {
       const insertPose = this.db.prepare(`
         INSERT INTO product_poses (
           batch_id, product_id, pose_id, variant_count, status, regenerate_count, last_error,
-          prompt_override, last_prompt_used, prompt_preview
+          provider_model_id, prompt_override, last_prompt_used, prompt_preview
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       const insertGarmentImage = this.db.prepare(`
@@ -378,6 +384,7 @@ export class ProductRepository {
           pose.status,
           pose.regenerateCount,
           pose.lastError ?? null,
+          pose.providerModelId ?? "",
           pose.promptOverride ?? "",
           pose.lastPromptUsed ?? "",
           pose.promptPreview ?? ""
@@ -386,15 +393,16 @@ export class ProductRepository {
 
       const insertOutput = this.db.prepare(`
         INSERT INTO outputs (
-          output_id, batch_id, product_id, pose_id, sort_order, variant_key, file_name, file_path,
+          output_id, usage_id, batch_id, product_id, pose_id, sort_order, variant_key, file_name, file_path,
           metadata_path, status, error, metadata_json
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       nextManifest.outputs.forEach((output, index) => {
         insertOutput.run(
           output.outputId,
+          output.usageId ?? null,
           resolvedBatchId,
           nextManifest.productId,
           output.poseId,
@@ -536,6 +544,7 @@ function normalizeManifest(manifest: ProductManifest): ProductManifest {
     },
     poses: manifest.poses.map((pose) => ({
       ...pose,
+      providerModelId: pose.providerModelId ?? "",
       promptOverride: pose.promptOverride ?? "",
       lastPromptUsed: pose.lastPromptUsed ?? "",
       promptPreview: pose.promptPreview ?? ""

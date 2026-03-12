@@ -11,7 +11,7 @@
   const garmentPreviewImage = document.getElementById("garment-preview-image");
   const createClientModal = document.getElementById("create-client-modal");
   let pollingHandle = null;
-  const promptDraftPrefix = `auto2:prompt-draft:v3:${pageModel.productId}:`;
+  const promptDraftPrefix = `auto2:prompt-draft:v6:${pageModel.productId}:`;
   const sidebarStateKey = "auto2:sidebar-collapsed";
   const modelAgeGroupLabels = {
     nino: "Nino",
@@ -108,6 +108,7 @@
       garments: [],
       selectedModelId: "",
       selectedModelPhotoIds: [],
+      selectedPhotoPrompts: {},
       step: 1,
       availableModels: Array.isArray(pageModel.availableModels) ? pageModel.availableModels : []
     };
@@ -129,6 +130,7 @@
     const selectedModelName = document.getElementById("wizard-selected-model-name");
     const selectedModelMeta = document.getElementById("wizard-selected-model-meta");
     const modelPhotoPicker = document.getElementById("wizard-model-photo-picker");
+    const photoPromptContainer = document.getElementById("wizard-photo-prompts");
 
     function getFilteredModels() {
       const selectedClientId = clientField?.value || "";
@@ -137,6 +139,74 @@
           return true;
         }
         return !model.clientId || model.clientId === selectedClientId;
+      });
+    }
+
+    function getSelectedModel() {
+      return state.availableModels.find((model) => model.modelId === state.selectedModelId) || null;
+    }
+
+    function getSelectedModelPhotos() {
+      const selectedModel = getSelectedModel();
+      if (!selectedModel) {
+        return [];
+      }
+      const photosById = new Map(selectedModel.photos.map((photo) => [photo.photoId, photo]));
+      return state.selectedModelPhotoIds
+        .map((photoId) => photosById.get(photoId))
+        .filter(Boolean);
+    }
+
+    function captureSelectedPhotoPrompts() {
+      document.querySelectorAll(".wizard-photo-prompt").forEach((field) => {
+        const photoId = field.getAttribute("data-photo-id");
+        if (!photoId) {
+          return;
+        }
+        state.selectedPhotoPrompts[photoId] = field.value || "";
+      });
+    }
+
+    function renderSelectedPhotoPrompts() {
+      if (!photoPromptContainer) {
+        return;
+      }
+      const selectedPhotos = getSelectedModelPhotos();
+      if (!selectedPhotos.length) {
+        photoPromptContainer.innerHTML = `<div class="empty-state wizard-empty">Selecciona una o mas fotos del modelo en el paso 2 para agregarles un prompt extra individual.</div>`;
+        return;
+      }
+      photoPromptContainer.innerHTML = selectedPhotos.map((photo, index) => {
+        const savedPrompt = state.selectedPhotoPrompts[photo.photoId] || "";
+        const photoName = photo.filePath.split(/[\\/]/).pop() || `Foto ${index + 1}`;
+        const previewUrl = photo.previewUrl || `/files/${encodeURIComponent(photo.filePath)}`;
+        return `
+          <div class="prompt-shell wizard-photo-prompt-shell">
+            <div class="wizard-photo-prompt-head">
+              <img src="${escapeHtml(previewUrl)}" alt="${escapeHtml(photoName)}" class="wizard-photo-prompt-thumb" />
+              <div>
+                <label for="wizard-photo-prompt-${escapeHtml(photo.photoId)}">Extra imagen ${index + 1}</label>
+                <p class="muted">${escapeHtml(photoName)}</p>
+              </div>
+            </div>
+            <textarea
+              id="wizard-photo-prompt-${escapeHtml(photo.photoId)}"
+              class="wizard-photo-prompt"
+              data-photo-id="${escapeHtml(photo.photoId)}"
+              rows="4"
+              placeholder="Instruccion extra opcional para esta imagen del modelo"
+            >${escapeHtml(savedPrompt)}</textarea>
+          </div>
+        `;
+      }).join("");
+      photoPromptContainer.querySelectorAll(".wizard-photo-prompt").forEach((field) => {
+        field.addEventListener("input", () => {
+          const photoId = field.getAttribute("data-photo-id");
+          if (!photoId) {
+            return;
+          }
+          state.selectedPhotoPrompts[photoId] = field.value || "";
+        });
       });
     }
 
@@ -202,6 +272,7 @@
       `);
         renderModelCatalog();
         renderSelectedModel();
+        renderSelectedPhotoPrompts();
         renderWizardLiveSummary(garmentGroups);
       }
 
@@ -229,7 +300,7 @@
         if (readinessNode) {
           const readiness = [];
           if (state.garments.length < 1) readiness.push("falta al menos 1 producto");
-          if (!state.selectedModelId || state.selectedModelPhotoIds.length !== 4) readiness.push("faltan 4 fotos de modelo");
+          if (!state.selectedModelId || state.selectedModelPhotoIds.length < 1) readiness.push("falta al menos 1 foto de modelo");
         readinessNode.textContent = readiness.length
           ? `Pendiente: ${readiness.join(", ")}.`
           : "Listo para lanzar el batch cuando confirmes el paso 5.";
@@ -263,6 +334,7 @@
         }).join("");
         modelCatalogNode.querySelectorAll(".wizard-model-card").forEach((button) => {
           button.addEventListener("click", () => {
+            captureSelectedPhotoPrompts();
             const modelId = button.getAttribute("data-model-id");
             const model = state.availableModels.find((item) => item.modelId === modelId);
             if (!model) {
@@ -304,12 +376,20 @@
         }).join("");
         modelPhotoPicker.querySelectorAll(".wizard-model-photo-checkbox").forEach((checkbox) => {
           checkbox.addEventListener("change", () => {
+            captureSelectedPhotoPrompts();
             state.selectedModelPhotoIds = Array.from(modelPhotoPicker.querySelectorAll(".wizard-model-photo-checkbox"))
               .filter((node) => node.checked)
               .map((node) => node.value);
             modelPhotoPicker.querySelectorAll(".wizard-model-photo-tile").forEach((tile) => {
               tile.classList.toggle("active", state.selectedModelPhotoIds.includes(tile.getAttribute("data-photo-id")));
             });
+            const selectedSet = new Set(state.selectedModelPhotoIds);
+            Object.keys(state.selectedPhotoPrompts).forEach((photoId) => {
+              if (!selectedSet.has(photoId)) {
+                delete state.selectedPhotoPrompts[photoId];
+              }
+            });
+            renderSelectedPhotoPrompts();
             renderWizardLiveSummary(summarizeGarments(state.garments));
           });
         });
@@ -415,6 +495,7 @@
 
       wizardForm.addEventListener("submit", async (event) => {
         event.preventDefault();
+        captureSelectedPhotoPrompts();
         const promptValidationError = validateWizardStep(3, state);
         const backgroundValidationError = validateWizardStep(4, state);
         const providerValidationError = validateWizardStep(5, state);
@@ -430,10 +511,11 @@
         formData.append("promptConfig", JSON.stringify({
           systemPrompt: document.getElementById("wizard-system-prompt")?.value || "",
           generalPrompt: document.getElementById("wizard-general-prompt")?.value || "",
-          posePrompts: Object.fromEntries(Array.from(document.querySelectorAll(".wizard-pose-prompt")).map((field) => [
-            field.getAttribute("data-pose-id"),
-            field.value || ""
-          ])),
+          posePrompts: Object.fromEntries(
+            state.selectedModelPhotoIds
+              .map((photoId) => [photoId, state.selectedPhotoPrompts[photoId] || ""])
+              .filter(([photoId]) => Boolean(photoId))
+          ),
           backgroundConfig: buildBackgroundConfigPayload(),
           providerSettings: buildProviderSettingsPayload()
           }));
@@ -561,13 +643,13 @@
     if (step >= 2 && !state.selectedModelId) {
       return "Debes seleccionar un modelo antes de continuar.";
     }
-    if (step >= 2 && state.selectedModelPhotoIds.length !== 4) {
-      return "Debes seleccionar exactamente 4 fotos del modelo.";
+    if (step >= 2 && state.selectedModelPhotoIds.length < 1) {
+      return "Debes seleccionar al menos 1 foto del modelo.";
     }
     if (step >= 5) {
       const providerSettings = buildProviderSettingsPayload();
       if (!providerSettings.modelId) {
-        return "Debes seleccionar un modelo de fal.ai.";
+        return "Debes seleccionar un modelo de imagen.";
       }
       if (typeof providerSettings.seed === "number" && Number.isNaN(providerSettings.seed)) {
         return "La seed debe ser numerica si decides completarla.";
@@ -687,7 +769,8 @@
 
   function loadPromptDraft(poseId) {
     try {
-      return window.localStorage.getItem(getPromptDraftKey(poseId));
+      const value = window.localStorage.getItem(getPromptDraftKey(poseId));
+      return value && value.trim() ? value : null;
     } catch {
       return null;
     }
@@ -1135,9 +1218,9 @@
       }
     });
     photoInput.addEventListener("change", (event) => {
-      const remainingSlots = Math.max(0, 10 - totalSelectedPhotos());
+      const remainingSlots = Math.max(0, 20 - totalSelectedPhotos());
       const normalized = Array.from(event.currentTarget.files || []).map((file) => normalizePickedFile(file)).slice(0, remainingSlots);
-      modalState.newPhotos = mergeByKey(modalState.newPhotos, normalized).slice(0, Math.max(0, 10 - modalState.existingPhotos.filter((photo) => photo.keep).length));
+      modalState.newPhotos = mergeByKey(modalState.newPhotos, normalized).slice(0, Math.max(0, 20 - modalState.existingPhotos.filter((photo) => photo.keep).length));
       syncRenderedPhotos();
       event.currentTarget.value = "";
     });
@@ -1154,9 +1237,9 @@
     modal.querySelector('[data-dropzone="catalog-model-photos"]')?.addEventListener("drop", async (event) => {
       event.preventDefault();
       event.currentTarget.classList.remove("is-dragover");
-      const remainingSlots = Math.max(0, 10 - totalSelectedPhotos());
+      const remainingSlots = Math.max(0, 20 - totalSelectedPhotos());
       const dropped = (await collectDroppedFiles(event.dataTransfer)).slice(0, remainingSlots);
-      modalState.newPhotos = mergeByKey(modalState.newPhotos, dropped).slice(0, Math.max(0, 10 - modalState.existingPhotos.filter((photo) => photo.keep).length));
+      modalState.newPhotos = mergeByKey(modalState.newPhotos, dropped).slice(0, Math.max(0, 20 - modalState.existingPhotos.filter((photo) => photo.keep).length));
       syncRenderedPhotos();
     });
 

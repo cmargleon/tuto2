@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import type {
   ActiveBatchState,
+  AnalyticsFilters,
   BatchModelSelection,
   BatchSnapshot,
   BatchJob,
@@ -30,6 +31,7 @@ import { PromptService } from "./prompt-service";
 import { InputScannerService } from "./input-scanner-service";
 import { BatchPromptConfigService } from "./batch-prompt-config-service";
 import { BatchHistoryService } from "./batch-history-service";
+import { AnalyticsService } from "./analytics-service";
 
 export class ProductService {
   constructor(
@@ -40,7 +42,8 @@ export class ProductService {
     private readonly batchPromptConfigService: BatchPromptConfigService,
     private readonly batchHistoryService: BatchHistoryService,
     private readonly jobRepository: JobRepository,
-    private readonly runtimeStateRepository: RuntimeStateRepository
+    private readonly runtimeStateRepository: RuntimeStateRepository,
+    private readonly analyticsService: AnalyticsService
   ) {}
 
   async listProducts(): Promise<ProductListItem[]> {
@@ -167,7 +170,10 @@ export class ProductService {
     manifest.status = computeProductStatus(manifest);
     await this.repository.saveProduct(manifest);
     await this.batchHistoryService.syncActiveBatchFromCurrent(undefined, productId);
-    await this.logBatchEvent("product_approved", "Salida aprobada para la pose.", { productId, poseId });
+    if (output.usageId) {
+      this.analyticsService.markUsageApproved(output.usageId);
+    }
+    await this.logBatchEvent("pose_approved", "Salida aprobada para la pose.", { productId, poseId });
     return manifest;
   }
 
@@ -197,8 +203,21 @@ export class ProductService {
     manifest.status = "approved";
     await this.repository.saveProduct(manifest);
     await this.exportApproved(manifest);
-    await this.batchHistoryService.syncActiveBatchFromCurrent("completed", productId);
+    for (const outputId of Object.values(manifest.approved).flat()) {
+      const output = manifest.outputs.find((item) => item.outputId === outputId);
+      if (output?.usageId) {
+        this.analyticsService.markUsageApproved(output.usageId);
+      }
+    }
+    await this.batchHistoryService.syncActiveBatchFromCurrent(undefined, productId);
     await this.logBatchEvent("product_approved", "Producto aprobado completamente.", { productId });
+    const activeBatch = await this.batchHistoryService.getActiveBatch();
+    if (activeBatch) {
+      const batch = await this.batchHistoryService.getBatch(activeBatch.batchId);
+      if (batch.status === "completed") {
+        await this.logBatchEvent("batch_completed", "Batch completado.", { productId });
+      }
+    }
     return manifest;
   }
 
@@ -210,23 +229,37 @@ export class ProductService {
   ): Promise<ProductManifest> {
     const manifest = await this.getProduct(productId);
     const poseState = getPoseState(manifest, poseId);
-    if (providerModelId?.trim()) {
-      const batchPromptConfig = await this.batchPromptConfigService.get();
-      await this.batchPromptConfigService.set({
-        ...batchPromptConfig,
-        providerSettings: {
-          ...batchPromptConfig.providerSettings,
-          modelId: providerModelId.trim()
-        }
-      });
-    }
+    const previousProviderModelId = poseState.providerModelId?.trim() || "";
+    const nextProviderModelId = providerModelId?.trim() || previousProviderModelId;
+    const previousPromptOverride = poseState.promptOverride?.trim() || "";
+    const nextPromptOverride = sanitizeUserPrompt(promptOverride) || "";
+    poseState.providerModelId = nextProviderModelId;
     poseState.status = "pending";
     poseState.regenerateCount += 1;
     poseState.lastError = undefined;
-    poseState.promptOverride = promptOverride?.trim() ?? poseState.promptOverride ?? "";
+    poseState.promptOverride = nextPromptOverride;
     manifest.status = "pending";
     await this.repository.saveProduct(manifest);
     await this.batchHistoryService.syncActiveBatchFromCurrent("running", productId);
+    if (nextProviderModelId && nextProviderModelId !== previousProviderModelId) {
+      await this.logBatchEvent("provider_model_changed", "Modelo de IA cambiado para la pose.", {
+        productId,
+        poseId,
+        meta: {
+          previousProviderModelId,
+          providerModelId: nextProviderModelId
+        }
+      });
+    }
+    if (nextPromptOverride !== previousPromptOverride) {
+      await this.logBatchEvent("prompt_changed", "Prompt de la pose actualizado.", {
+        productId,
+        poseId,
+        meta: {
+          promptLength: nextPromptOverride.length
+        }
+      });
+    }
     await this.logBatchEvent("pose_regenerated", "Pose enviada a regeneracion.", { productId, poseId });
     return manifest;
   }
@@ -234,6 +267,8 @@ export class ProductService {
   async generateMissingPoseOutputs(productId: string, poseInput: PoseInput): Promise<void> {
     const manifest = await this.getProduct(productId);
     const poseState = getPoseState(manifest, poseInput.poseId);
+    const activeBatch = await this.requireActiveBatchState();
+    const batchManifest = await this.batchHistoryService.getBatch(activeBatch.batchId);
 
     poseState.status = "generating";
     manifest.status = "generating";
@@ -242,56 +277,79 @@ export class ProductService {
     await this.batchHistoryService.syncActiveBatchFromCurrent("running", productId);
     await this.logBatchEvent("generation_started", "Generacion de pose iniciada.", { productId, poseId: poseInput.poseId });
 
+    let usageId: string | undefined;
     try {
       const batchPromptConfig = await this.batchPromptConfigService.get();
       const batchModelSelection = await this.getRequiredModelSelection();
+      const posePromptText = this.resolvePosePromptText(
+        batchModelSelection,
+        batchPromptConfig.posePrompts,
+        poseInput.poseId,
+        poseInput.sourcePhotoId,
+        manifest.promptOverrides?.posePrompts
+      );
       const garmentImages = await Promise.all(manifest.garmentImages.map((filePath) => loadImageAsProviderInput(filePath)));
       const { modelImages, poseImage } = await this.buildModelAndPoseInputs(batchModelSelection, poseInput.filePath);
-      const providerInput = poseState.promptOverride?.trim()
-        ? {
-            productId: manifest.productId,
-            category: manifest.category,
-            poseId: poseInput.poseId,
-            poseLabel: poseInput.label,
-            modelImages,
-            garmentImages,
-            poseImage,
-            variantCount: 1,
-            prompt: poseState.promptOverride.trim(),
-            providerSettings: batchPromptConfig.providerSettings
-          }
-        : this.promptService.buildProviderInput({
-            productId: manifest.productId,
-            category: manifest.category,
-            poseId: poseInput.poseId,
-            poseLabel: poseInput.label,
-            modelImages,
-            garmentImages,
-            poseImage,
-            variantCount: 1,
-            promptOverride: poseState.promptOverride,
-            batchPromptConfig,
-            productGeneralPrompt: manifest.promptOverrides?.generalPrompt,
-            productPosePrompt: manifest.promptOverrides?.posePrompts?.[poseInput.poseId],
-            providerSettings: batchPromptConfig.providerSettings
-          });
-      poseState.lastPromptUsed = providerInput.prompt;
-      await this.repository.saveProduct(manifest);
-
-      const generated = await this.provider.generateVariantsForPose(providerInput);
-      const batchPromptConfigResolved = await this.batchPromptConfigService.get();
-      const systemPrompt = this.promptService.getResolvedSystemPrompt(batchPromptConfigResolved);
+      const providerModelId = poseState.providerModelId?.trim() || batchPromptConfig.providerSettings.modelId || this.provider.modelName;
+      const systemPrompt = this.promptService.getResolvedSystemPrompt(batchPromptConfig);
       const userPrompt = this.promptService.buildUserPrompt(
         manifest.category,
         poseInput.poseId,
         manifest.productId,
-        poseState.promptOverride,
+        sanitizeUserPrompt(poseState.promptOverride),
         {
-          batchPromptConfig: batchPromptConfigResolved,
+          batchPromptConfig,
           productGeneralPrompt: manifest.promptOverrides?.generalPrompt,
-          productPosePrompt: manifest.promptOverrides?.posePrompts?.[poseInput.poseId]
+          productPosePrompt: posePromptText
         }
       );
+      const providerInput = this.promptService.buildProviderInput({
+        productId: manifest.productId,
+        category: manifest.category,
+        poseId: poseInput.poseId,
+        poseLabel: poseInput.label,
+        modelImages,
+        garmentImages,
+        poseImage,
+        variantCount: 1,
+        promptOverride: sanitizeUserPrompt(poseState.promptOverride),
+        batchPromptConfig,
+        productGeneralPrompt: manifest.promptOverrides?.generalPrompt,
+        productPosePrompt: posePromptText,
+        providerSettings: {
+          ...batchPromptConfig.providerSettings,
+          modelId: providerModelId
+        }
+      });
+      poseState.lastPromptUsed = providerInput.prompt;
+      await this.repository.saveProduct(manifest);
+
+      const usage = this.analyticsService.startGeneration({
+        batchId: activeBatch.batchId,
+        clientId: batchManifest.clientId,
+        productId: manifest.productId,
+        poseId: poseInput.poseId,
+        category: manifest.category,
+        provider: this.provider.resolveProviderName(providerModelId),
+        providerModelId,
+        source: poseState.regenerateCount > 0 ? "regeneration" : "generation",
+        systemPrompt,
+        userPrompt,
+        finalPrompt: providerInput.prompt,
+        providerSettings: providerInput.providerSettings,
+        backgroundMode: batchPromptConfig.backgroundConfig?.mode,
+        selectedModelId: batchModelSelection.modelId,
+        sourcePhotoId: poseInput.sourcePhotoId,
+        selectedPhotoIds: batchModelSelection.selectedPhotoIds,
+        metadata: {
+          batchName: batchManifest.name,
+          batchStatus: batchManifest.status,
+          clientName: batchManifest.clientName ?? null
+        }
+      });
+      usageId = usage.usageId;
+
+      const generated = await this.provider.generateVariantsForPose(providerInput);
       this.repository.addPromptHistory({
         entryId: `prompt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         batchId: (await this.requireActiveBatchState()).batchId,
@@ -300,18 +358,30 @@ export class ProductService {
         systemPrompt,
         userPrompt,
         finalPrompt: providerInput.prompt,
-        providerModelId: batchPromptConfig.providerSettings.modelId || this.provider.modelName,
+        providerModelId,
         source: poseState.regenerateCount > 0 ? "regeneration" : "generation",
         createdAt: new Date().toISOString()
       });
+      const finishedUsage = usageId ? this.analyticsService.finishGeneration(usageId, {
+        requestId: generated[0]?.responseId,
+        outputCount: generated.length,
+        metadata: {
+          batchName: batchManifest.name,
+          batchStatus: batchManifest.status,
+          clientName: batchManifest.clientName ?? null
+        }
+      }) : null;
       const outputs = await Promise.all(
-        generated.map((image, index) => this.saveOutputFiles(
+        generated.map((image) => this.saveOutputFiles(
           manifest,
           poseInput.poseId,
           "a",
           providerInput.prompt,
-          batchPromptConfig.providerSettings.modelId || this.provider.modelName,
-          image
+          providerModelId,
+          image,
+          finishedUsage?.usageId,
+          finishedUsage?.costEstimate,
+          finishedUsage?.providerReportedCost
         ))
       );
       const latestOutput = outputs[0];
@@ -333,6 +403,17 @@ export class ProductService {
       manifest.lastError = poseState.lastError;
       await this.repository.saveProduct(manifest);
       await this.batchHistoryService.syncActiveBatchFromCurrent("error", productId);
+      if (usageId) {
+        this.analyticsService.failGeneration(usageId, {
+          errorMessage: poseState.lastError,
+          metadata: {
+            batchName: batchManifest.name,
+            batchStatus: "error",
+            clientName: batchManifest.clientName ?? null
+          }
+        });
+      }
+      await this.logBatchEvent("generation_failed", "Generacion de pose con error.", { productId, poseId: poseInput.poseId });
       throw error;
     }
   }
@@ -343,7 +424,10 @@ export class ProductService {
     variantKey: "a",
     prompt: string,
     resolvedModelName: string,
-    image: Awaited<ReturnType<ImageGenerationProvider["generateVariantsForPose"]>>[number]
+    image: Awaited<ReturnType<ImageGenerationProvider["generateVariantsForPose"]>>[number],
+    usageId?: string,
+    costEstimate?: number,
+    providerReportedCost?: number
   ): Promise<GeneratedOutput> {
     const revision = this.getNextPoseRevision(manifest, poseId);
     const outputId = `${manifest.productId}-${poseId}-${variantKey}-${revision}`;
@@ -356,14 +440,17 @@ export class ProductService {
     const normalized = await normalizeGeneratedImage(image.bytes);
     await fs.writeFile(filePath, normalized);
     const metadata: GeneratedImageMetadata = {
+      usageId,
       prompt,
       poseId,
       variantKey,
-      provider: this.provider.providerName,
+      provider: this.provider.resolveProviderName(resolvedModelName),
       model: resolvedModelName,
-      endpoint: this.provider.methodName,
+      endpoint: this.provider.resolveMethodName(resolvedModelName),
       timestamp: new Date().toISOString(),
       responseId: image.responseId,
+      costEstimate,
+      providerReportedCost,
       notes: [
         "Salida adaptada localmente a 1000x1000 JPG con densidad 72 ppp.",
         "El MVP no garantiza Adobe RGB; se guarda en JPEG estandar generado con Sharp."
@@ -372,6 +459,7 @@ export class ProductService {
     await writeJsonFile(metadataPath, metadata);
     return {
       outputId,
+      usageId,
       poseId,
       variantKey,
       fileName,
@@ -441,6 +529,14 @@ export class ProductService {
     return this.batchHistoryService.listClients();
   }
 
+  getAnalyticsDashboard(filters: AnalyticsFilters) {
+    return this.analyticsService.getDashboard(filters);
+  }
+
+  getAnalyticsFilterOptions() {
+    return this.analyticsService.getFilterOptions();
+  }
+
   listModels(filters?: { clientId?: string; includeFree?: boolean }) {
     return this.batchHistoryService.listModels(filters);
   }
@@ -482,8 +578,8 @@ export class ProductService {
     if (input.photos.length < 1) {
       throw new Error("Debes cargar al menos una foto del modelo.");
     }
-    if (input.photos.length > 10) {
-      throw new Error("Solo se permiten hasta 10 fotos por modelo.");
+    if (input.photos.length > 20) {
+      throw new Error("Solo se permiten hasta 20 fotos por modelo.");
     }
     const now = new Date().toISOString();
     const modelId = `model-${sanitizeId(name)}-${Date.now().toString(36)}`;
@@ -545,8 +641,8 @@ export class ProductService {
     if (totalPhotos < 1) {
       throw new Error("El modelo debe conservar al menos una foto.");
     }
-    if (totalPhotos > 10) {
-      throw new Error("Solo se permiten hasta 10 fotos por modelo.");
+    if (totalPhotos > 20) {
+      throw new Error("Solo se permiten hasta 20 fotos por modelo.");
     }
 
     const now = new Date().toISOString();
@@ -703,22 +799,30 @@ export class ProductService {
 
   private async applyPromptPreviews(manifest: ProductManifest): Promise<void> {
     const batchPromptConfig = await this.batchPromptConfigService.get();
-    const resolvedSystemPrompt = this.promptService.getResolvedSystemPrompt(batchPromptConfig);
+    const selection = await this.getRequiredModelSelection().catch(() => null);
     for (const pose of manifest.poses) {
+      const posePromptText = this.resolvePosePromptText(
+        selection,
+        batchPromptConfig.posePrompts,
+        pose.poseId,
+        undefined,
+        manifest.promptOverrides?.posePrompts
+      );
       pose.promptPreview = this.promptService.buildEditorPrompt({
-        poseId: pose.poseId,
         category: manifest.category,
+        poseId: pose.poseId,
         productId: manifest.productId,
         batchPromptConfig,
         productGeneralPrompt: manifest.promptOverrides?.generalPrompt,
-        productPosePrompt: manifest.promptOverrides?.posePrompts?.[pose.poseId]
+        productPosePrompt: posePromptText
       });
       if (pose.promptOverride) {
-        pose.promptOverride = normalizeEditorPrompt(pose.promptOverride, resolvedSystemPrompt);
+        pose.promptOverride = sanitizeUserPrompt(pose.promptOverride);
       }
       if (pose.lastPromptUsed) {
-        pose.lastPromptUsed = normalizeEditorPrompt(pose.lastPromptUsed, resolvedSystemPrompt);
+        pose.lastPromptUsed = sanitizeUserPrompt(pose.lastPromptUsed);
       }
+      pose.providerModelId = pose.providerModelId?.trim() || batchPromptConfig.providerSettings.modelId;
     }
     await this.repository.saveProduct(manifest);
   }
@@ -733,9 +837,23 @@ export class ProductService {
   }
 
   private async logBatchEvent(
-    type: "generation_started" | "generation_finished" | "product_approved" | "pose_regenerated" | "model_changed",
+    type:
+      | "generation_started"
+      | "generation_finished"
+      | "generation_failed"
+      | "pose_approved"
+      | "product_approved"
+      | "batch_completed"
+      | "pose_regenerated"
+      | "model_changed"
+      | "provider_model_changed"
+      | "prompt_changed",
     message: string,
-    details: { productId?: string; poseId?: string }
+    details: {
+      productId?: string;
+      poseId?: string;
+      meta?: Record<string, string | number | boolean | null>;
+    }
   ): Promise<void> {
     const active = await this.batchHistoryService.getActiveBatch();
     if (!active) {
@@ -745,7 +863,8 @@ export class ProductService {
       type,
       message,
       productId: details.productId,
-      poseId: details.poseId
+      poseId: details.poseId,
+      meta: details.meta
     });
   }
 
@@ -760,8 +879,8 @@ export class ProductService {
   private async getRequiredModelSelection(): Promise<BatchModelSelection> {
     const activeBatch = await this.requireActiveBatchState();
     const selection = this.batchHistoryService.getBatchModelSelection(activeBatch.batchId);
-    if (!selection || selection.selectedPhotoIds.length !== 4) {
-      throw new Error("No hay 4 fotos de modelo seleccionadas para este batch.");
+    if (!selection || selection.selectedPhotoIds.length < 1) {
+      throw new Error("No hay al menos 1 foto de modelo seleccionada para este batch.");
     }
     return selection;
   }
@@ -783,6 +902,39 @@ export class ProductService {
       modelImages: await Promise.all(fallbackIdentityPaths.map((filePath) => loadImageAsProviderInput(filePath))),
       poseImage: await loadImageAsProviderInput(poseFilePath)
     };
+  }
+
+  private resolvePosePromptText(
+    selection: BatchModelSelection | null,
+    batchPosePrompts: Record<string, string> | undefined,
+    poseId: string,
+    sourcePhotoId?: string,
+    productPosePrompts?: Record<string, string>
+  ): string {
+    const batchPromptMap = batchPosePrompts ?? {};
+    const productPromptMap = productPosePrompts ?? {};
+    const resolvedPhotoId = sourcePhotoId ?? this.resolvePoseSourcePhotoId(selection, poseId);
+    if (resolvedPhotoId && productPromptMap[resolvedPhotoId]?.trim()) {
+      return productPromptMap[resolvedPhotoId].trim();
+    }
+    if (resolvedPhotoId && batchPromptMap[resolvedPhotoId]?.trim()) {
+      return batchPromptMap[resolvedPhotoId].trim();
+    }
+    if (productPromptMap[poseId]?.trim()) {
+      return productPromptMap[poseId].trim();
+    }
+    if (batchPromptMap[poseId]?.trim()) {
+      return batchPromptMap[poseId].trim();
+    }
+    return "";
+  }
+
+  private resolvePoseSourcePhotoId(selection: BatchModelSelection | null, poseId: string): string | undefined {
+    if (!selection?.selectedPhotoIds.length) {
+      return undefined;
+    }
+    const index = Math.max(0, Number.parseInt(poseId.replace("pose", ""), 10) - 1 || 0);
+    return selection.selectedPhotoIds[Math.min(index, selection.selectedPhotoIds.length - 1)];
   }
 }
 
@@ -811,19 +963,8 @@ function computeProductStatus(manifest: ProductManifest): ProductManifest["statu
   return "pending";
 }
 
-function normalizeEditorPrompt(value: string | undefined, systemPrompt: string): string {
-  const trimmed = value?.trim() ?? "";
-  if (!trimmed) {
-    return "";
-  }
-  if (trimmed.startsWith("System instructions:")) {
-    return trimmed;
-  }
-  const systemBlock = systemPrompt.trim();
-  if (!systemBlock) {
-    return trimmed;
-  }
-  return `${systemBlock}\n\nUser prompt:\n${trimmed}`;
+function sanitizeUserPrompt(value: string | undefined): string {
+  return value?.trim() ?? "";
 }
 
 function mapBootstrapStatusToBatchStatus(status: BootstrapState["status"]): "running" | "completed" | "error" | "paused" {

@@ -65,15 +65,16 @@ export class InputScannerService {
   async loadPoses(): Promise<PoseInput[]> {
     const { batchId } = this.getActiveBatchInfo();
     const selection = this.batchRepository.getBatchModelSelection(batchId);
-    if (!selection || selection.selectedPhotoIds.length !== 4) {
-      throw new Error("Expected exactly 4 selected model photos to derive poses for the batch.");
+    if (!selection || selection.selectedPhotoIds.length < 1) {
+      throw new Error("Expected at least 1 selected model photo to derive poses for the batch.");
     }
     const model = this.batchRepository.getModel(selection.modelId);
     if (!model) {
       throw new Error(`Model not found for batch pose derivation: ${selection.modelId}.`);
     }
     const photosById = new Map(model.photos.map((photo) => [photo.photoId, photo.filePath]));
-    const poseFiles = selection.selectedPhotoIds
+    const selectedPoseSeeds = buildPoseSeedIds(selection.selectedPhotoIds, 4);
+    const poseFiles = selectedPoseSeeds
       .map((photoId) => photosById.get(photoId))
       .filter((filePath): filePath is string => Boolean(filePath));
     if (poseFiles.length !== 4) {
@@ -83,7 +84,8 @@ export class InputScannerService {
       poseId: `pose${index + 1}`,
       label: `Pose ${index + 1}`,
       filePath,
-      description: path.basename(filePath)
+      description: path.basename(filePath),
+      sourcePhotoId: selectedPoseSeeds[index]
     }));
   }
 
@@ -189,6 +191,20 @@ export class InputScannerService {
     };
   }
 
+}
+
+function buildPoseSeedIds(selectedPhotoIds: string[], count: number): string[] {
+  if (selectedPhotoIds.length === 0) {
+    return [];
+  }
+  const seeds: string[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const selectedId = selectedPhotoIds[Math.min(index, selectedPhotoIds.length - 1)];
+    if (selectedId) {
+      seeds.push(selectedId);
+    }
+  }
+  return seeds;
 }
 
 function mergePoseState(current: ProductPoseState[] | undefined, category: ProductManifest["category"]): ProductPoseState[] {

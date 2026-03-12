@@ -15,12 +15,14 @@ export function createRouter(
   router.get("/generate-images", pageController.generateImages);
   router.get("/batches", pageController.batches);
   router.get("/batches/:id", pageController.batchDetail);
+  router.get("/analytics", pageController.analytics);
   router.get("/clients", pageController.clients);
   router.get("/models", pageController.models);
   router.get("/review/:id", pageController.review);
 
   router.get("/api/products", apiController.getProducts);
   router.get("/api/batches", apiController.getBatches);
+  router.get("/api/analytics", apiController.getAnalytics);
   router.get("/api/models", apiController.getModels);
   router.get("/api/product/:id", apiController.getProduct);
   router.get("/api/status", apiController.getStatus);

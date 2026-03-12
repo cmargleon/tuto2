@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import type { AnalyticsFilters } from "../../shared/types";
 import { ProductService } from "../services/product-service";
 import { BootstrapService } from "../services/bootstrap-service";
 import { JobRunner } from "../jobs/job-runner";
@@ -124,6 +125,26 @@ export class ApiController {
     });
   };
 
+  getAnalytics = async (request: Request, response: Response): Promise<void> => {
+    const filters: AnalyticsFilters = {
+      from: typeof request.query.from === "string" && request.query.from.trim() ? request.query.from.trim() : undefined,
+      to: typeof request.query.to === "string" && request.query.to.trim() ? request.query.to.trim() : undefined,
+      clientId: typeof request.query.clientId === "string" && request.query.clientId.trim() ? request.query.clientId.trim() : undefined,
+      providerModelId: typeof request.query.providerModelId === "string" && request.query.providerModelId.trim() ? request.query.providerModelId.trim() : undefined,
+      category: typeof request.query.category === "string" && request.query.category.trim()
+        ? request.query.category.trim() as AnalyticsFilters["category"]
+        : "all",
+      batchId: typeof request.query.batchId === "string" && request.query.batchId.trim() ? request.query.batchId.trim() : undefined,
+      status: typeof request.query.status === "string" && request.query.status.trim()
+        ? request.query.status.trim() as AnalyticsFilters["status"]
+        : "all"
+    };
+    response.json({
+      dashboard: this.productService.getAnalyticsDashboard(filters),
+      filterOptions: this.productService.getAnalyticsFilterOptions()
+    });
+  };
+
   saveBatch = async (_request: Request, response: Response): Promise<void> => {
     const snapshot = await this.productService.saveCurrentBatchSnapshot();
     response.json({
@@ -143,8 +164,8 @@ export class ApiController {
     });
     const clientId = typeof request.body.clientId === "string" ? request.body.clientId.trim() : "";
     const modelSelection = parseJsonField<{ modelId?: string; selectedPhotoIds?: string[] }>(request.body.modelSelection, {});
-    if (!modelSelection.modelId || !Array.isArray(modelSelection.selectedPhotoIds) || modelSelection.selectedPhotoIds.length !== 4) {
-      response.status(400).json({ error: "Debes seleccionar un modelo y exactamente 4 fotos del modelo." });
+    if (!modelSelection.modelId || !Array.isArray(modelSelection.selectedPhotoIds) || modelSelection.selectedPhotoIds.length < 1) {
+      response.status(400).json({ error: "Debes seleccionar un modelo y al menos 1 foto del modelo." });
       return;
     }
 

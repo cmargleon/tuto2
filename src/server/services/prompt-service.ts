@@ -3,42 +3,58 @@ import type { BatchBackgroundConfig, BatchPromptConfig, GenerateVariantsInput, P
 export class PromptService {
   static getDefaultSystemPrompt(): string {
     return [
-      "Use the reference images with strict role separation.",
+      "Use the two reference images with strict role separation.",
       "",
-      "Image order in the request:",
-      "1. The first image or images are always the garment reference image(s).",
-      "2. The last image is always the model image that already defines the target pose.",
+      "Image order:",
+      "1. The first image is the garment reference image.",
+      "2. The second image is the model image and defines the person identity, pose, framing, camera angle, composition and scene.",
       "",
-      "Reference priority:",
-      "1. The model image defines the person identity, pose, framing, camera angle and composition.",
-      "2. The garment image(s) define only the clothing/product to be worn.",
+      "Task:",
+      "Replace the clothing worn by the person in the second image with the garment shown in the first image.",
       "",
-      "Strict instructions:",
-      "- Read the images using that exact order and role assignment.",
+      "Identity and pose rules:",
       "- Keep exactly one person in the final image.",
-      "- The final person must be the same person shown in the model image.",
-      "- Use the model image as the only identity reference for the person.",
-      "- Use the model image as the only source for face, hair, body features and skin tone.",
-      "- Do not add a second person, duplicate person, background person or blended person.",
-      "- Keep the same pose, framing, camera angle, composition and body direction from the model image.",
-      "- The model image must not introduce a second person or any alternate identity.",
-      "- Replace the clothing currently worn by the person completely with the garment shown in the garment reference image(s).",
-      "- Use the garment reference image(s) only for the clothing/product and not for identity or pose.",
-      "- Apply the garment from the first image or images to the person from the last image.",
-      "- Do not keep, reuse or mix the original clothing from the model image.",
-      "- Do not invent extra garments, layers, accessories or alternate outfits unless explicitly requested in the user prompt.",
-      "- Preserve the garment faithfully using the garment reference image(s): same shape, proportions, color, material, texture, stitching, logo placement and visible details.",
-      "- If any reference conflicts with another, identity, pose and composition must come from the model image, and clothing must come from the garment image(s).",
-      "- Do not merge or average identity between references.",
-      "- Do not change the person identity from the model image.",
-      "- Do not change the pose from the model image.",
-      "- Keep the final image photorealistic and coherent.",
-      "- Produce one final image only.",
+      "- Preserve the exact same person from image 2.",
+      "- Preserve the face, hair, skin tone, body shape and age appearance.",
+      "- Preserve the same pose, body direction, camera angle and composition from image 2.",
       "",
-      "What to ignore from each reference:",
-      "- Ignore clothing from the model image.",
-      "- Ignore identity, face, hair, body features, skin tone, pose and composition from the garment reference image(s)."
-    ].join("\n");
+      "Garment rules:",
+      "- Use image 1 only as the clothing reference.",
+      "- Completely replace the clothing worn by the model in image 2 with the garment from image 1.",
+      "- Do not keep, reuse or blend the original clothing from image 2.",
+      "- Do not invent extra garments, layers or accessories unless they are clearly part of the garment shown in image 1.",
+      "- Preserve the garment faithfully including shape, cut, proportions, color, material, fabric texture, stitching, patterns, logos and visible design details.",
+      "- Adapt the garment naturally to the model’s body and pose.",
+      "",
+      "Framing and face visibility rules:",
+      "- The model’s face must be fully visible in the final image.",
+      "- The entire head must remain inside the frame.",
+      "- Do not crop the forehead, chin, or sides of the head.",
+      "- Maintain a small safety margin above the head to avoid cutting the face.",
+      "- If necessary, slightly adjust or zoom out the framing to keep the full face visible.",
+      "- Never crop the eyes, nose or mouth.",
+      "",
+      "Scene rules:",
+      "- Keep the background similar to image 2 unless minor adjustments are needed for realism.",
+      "- Do not add other people or silhouettes.",
+      "- Do not add distracting objects.",
+      "",
+      "Image quality:",
+      "- Photorealistic result.",
+      "- Natural lighting and shadows.",
+      "- Clean catalog-style fashion photography.",
+      "",
+      "Ignore:",
+      "- Ignore the clothing worn in image 2.",
+      "- Ignore identity, pose and background from image 1.",
+      "",
+      "Priority rules:",
+      "1. Person identity and pose come from image 2.",
+      "2. Clothing comes from image 1.",
+      "",
+      "Output:",
+      "Produce one final photorealistic image with the model wearing the garment."
+    ].join("\\n");
   }
 
   getResolvedSystemPrompt(batchPromptConfig?: BatchPromptConfig): string {
@@ -97,34 +113,22 @@ export class PromptService {
       productPosePrompt?: string;
     }
   ): string {
-    const userPrompt = this.buildUserPrompt(
-      base.category,
-      base.poseId,
-      base.productId,
-      base.promptOverride,
-      {
-        batchPromptConfig: base.batchPromptConfig,
-        productGeneralPrompt: base.productGeneralPrompt,
-        productPosePrompt: base.productPosePrompt
-      }
-    );
-
-    const hiddenDirectives = this.getResolvedSystemPrompt(base.batchPromptConfig);
+    const visiblePrompt = this.buildEditorPrompt({
+      category: base.category,
+      poseId: base.poseId,
+      productId: base.productId,
+      promptOverride: base.promptOverride,
+      batchPromptConfig: base.batchPromptConfig,
+      productGeneralPrompt: base.productGeneralPrompt,
+      productPosePrompt: base.productPosePrompt
+    });
     const backgroundDirectives = this.buildBackgroundPrompt(base.batchPromptConfig?.backgroundConfig);
 
-    if (!userPrompt && !backgroundDirectives) {
-      return hiddenDirectives;
+    if (!backgroundDirectives) {
+      return visiblePrompt;
     }
 
-    const parts = [hiddenDirectives];
-    if (backgroundDirectives) {
-      parts.push(backgroundDirectives);
-    }
-    if (userPrompt) {
-      parts.push(`User prompt:\n${userPrompt}`);
-    }
-
-    return parts.join("\n\n");
+    return [visiblePrompt, backgroundDirectives].join("\n\n");
   }
 
   buildEditorPrompt(
@@ -138,24 +142,28 @@ export class PromptService {
       productPosePrompt?: string;
     }
   ): string {
-    return this.buildProviderPrompt({
-      productId: base.productId,
-      category: base.category,
-      poseId: base.poseId,
-      poseLabel: base.poseId,
-      modelImages: [],
-      garmentImages: [],
-      poseImage: {
-        mimeType: "image/jpeg",
-        dataBase64: "",
-        name: "pose"
-      },
-      variantCount: 1,
-      promptOverride: base.promptOverride,
-      batchPromptConfig: base.batchPromptConfig,
-      productGeneralPrompt: base.productGeneralPrompt,
-      productPosePrompt: base.productPosePrompt
-    });
+    if (base.promptOverride?.trim()) {
+      return base.promptOverride.trim();
+    }
+
+    const systemPrompt = this.getResolvedSystemPrompt(base.batchPromptConfig);
+    const userPrompt = this.buildUserPrompt(
+      base.category,
+      base.poseId,
+      base.productId,
+      undefined,
+      {
+        batchPromptConfig: base.batchPromptConfig,
+        productGeneralPrompt: base.productGeneralPrompt,
+        productPosePrompt: base.productPosePrompt
+      }
+    );
+
+    if (!userPrompt) {
+      return systemPrompt;
+    }
+
+    return [systemPrompt, `User prompt:\n${userPrompt}`].join("\n\n");
   }
 
   buildProviderInput(

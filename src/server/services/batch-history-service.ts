@@ -18,6 +18,7 @@ import { clearDirectory, copyDirectory, ensureDir, sanitizeId } from "../utils/f
 import { BatchRepository } from "../storage/batch-repository";
 import { ProductRepository } from "../storage/product-repository";
 import { RuntimeStateRepository } from "../storage/runtime-state-repository";
+import { AnalyticsService } from "./analytics-service";
 
 export class BatchHistoryService {
   private mutationQueue: Promise<void> = Promise.resolve();
@@ -25,7 +26,8 @@ export class BatchHistoryService {
   constructor(
     private readonly batchRepository: BatchRepository,
     private readonly productRepository: ProductRepository,
-    private readonly runtimeStateRepository: RuntimeStateRepository
+    private readonly runtimeStateRepository: RuntimeStateRepository,
+    private readonly analyticsService: AnalyticsService
   ) {}
 
   async ensureStructure(): Promise<void> {
@@ -243,6 +245,14 @@ export class BatchHistoryService {
         selectedModelPhotoIds: selection.selectedPhotoIds,
         updatedAt: new Date().toISOString()
       });
+      this.appendEvent(selection.batchId, {
+        type: "model_changed",
+        message: "Modelo del batch actualizado.",
+        meta: {
+          modelId: selection.modelId,
+          selectedPhotoCount: selection.selectedPhotoIds.length
+        }
+      });
     });
   }
 
@@ -429,10 +439,33 @@ export class BatchHistoryService {
   }
 
   private appendEvent(batchId: string, event: Omit<BatchEvent, "id" | "timestamp">): void {
-    this.batchRepository.appendEvent(batchId, {
+    const entry: BatchEvent = {
       id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       timestamp: new Date().toISOString(),
       ...event
+    };
+    this.batchRepository.appendEvent(batchId, entry);
+    const batch = this.batchRepository.getBatch(batchId);
+    if (!batch) {
+      return;
+    }
+    this.analyticsService.recordEvent({
+      eventId: entry.id,
+      batchId,
+      clientId: batch.clientId,
+      productId: entry.productId,
+      poseId: entry.poseId,
+      providerModelId: batch.promptConfig.providerSettings.modelId,
+      eventType: entry.type,
+      eventSource: event.type === "pose_regenerated" || event.type === "model_changed" || event.type === "provider_model_changed" || event.type === "prompt_changed"
+        ? "user"
+        : "system",
+      timestamp: entry.timestamp,
+      metadata: {
+        batchName: batch.name,
+        batchStatus: batch.status,
+        ...(entry.meta ?? {})
+      }
     });
   }
 

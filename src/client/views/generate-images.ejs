@@ -23,7 +23,7 @@
           <div class="topbar-title">
             <p class="eyebrow">Wizard</p>
             <h2>Generar Imagenes</h2>
-            <p class="muted">Carga productos, elige un modelo del catalogo y selecciona 4 fotos del modelo que ya contienen las poses finales antes de lanzar la generacion.</p>
+            <p class="muted">Carga productos, elige un modelo del catalogo y selecciona las fotos del modelo que quieras usar. Las primeras 4 se tomaran como poses base del lote y las demas ayudaran como referencia adicional.</p>
           </div>
         </section>
 
@@ -70,7 +70,7 @@
               <div class="wizard-copy">
                 <p class="summary-kicker">Paso 2</p>
                 <h3>Modelo</h3>
-                <p class="muted">Selecciona un modelo del catalogo y marca exactamente 4 fotos del modelo. Esas 4 fotos ya se usaran como referencia de identidad y de pose para el lote.</p>
+                <p class="muted">Selecciona un modelo del catalogo y marca al menos 1 foto del modelo. Cada foto seleccionada podra tener su propio prompt extra en el paso 3.</p>
               </div>
               <div class="wizard-model-grid">
                 <div class="summary-card dashboard-card">
@@ -98,7 +98,7 @@
                       </div>
                     </div>
                     <div id="wizard-model-photo-picker" class="wizard-model-photo-picker"></div>
-                    <p class="muted">Selecciona exactamente 4 fotos del modelo. Cada una se convertira en una pose del lote.</p>
+                    <p class="muted">Selecciona al menos 1 foto del modelo. Si eliges menos de 4, la app reutilizara la ultima para completar internamente las 4 poses del lote.</p>
                   </div>
                 </div>
               </div>
@@ -108,7 +108,7 @@
               <div class="wizard-copy">
                 <p class="summary-kicker">Paso 3</p>
                 <h3>Prompt</h3>
-                <p class="muted">Define un prompt general para todo el lote y agrega instrucciones extra por pose cuando haga falta.</p>
+                <p class="muted">Define un prompt general para todo el lote y agrega instrucciones extra por cada foto seleccionada del modelo cuando haga falta.</p>
               </div>
               <div class="wizard-prompt-grid">
                 <details class="system-prompt-toggle">
@@ -122,13 +122,8 @@
                   <label for="wizard-general-prompt">Prompt general</label>
                   <textarea id="wizard-general-prompt" rows="8" placeholder="Escribe aqui el prompt general del lote..."></textarea>
                 </div>
-                <div class="wizard-pose-prompts">
-                  <% for (const poseId of ["pose1", "pose2", "pose3", "pose4"]) { %>
-                    <div class="prompt-shell">
-                      <label for="wizard-<%= poseId %>-prompt">Extra <%= poseId.toUpperCase() %></label>
-                      <textarea id="wizard-<%= poseId %>-prompt" class="wizard-pose-prompt" data-pose-id="<%= poseId %>" rows="4" placeholder="Instruccion extra opcional para <%= poseId %>"></textarea>
-                    </div>
-                  <% } %>
+                <div id="wizard-photo-prompts" class="wizard-pose-prompts">
+                  <div class="empty-state wizard-empty">Selecciona una o mas fotos del modelo en el paso 2 para agregarles un prompt extra individual.</div>
                 </div>
               </div>
             </section>
@@ -272,11 +267,11 @@
               <div class="wizard-copy">
                 <p class="summary-kicker">Paso 5</p>
                 <h3>Configuracion de fal.ai</h3>
-                <p class="muted">Aqui eliges el modelo y los parametros documentados mas importantes del endpoint de fal.ai para esta corrida.</p>
+                <p class="muted">Aqui eliges el modelo de imagen y los parametros principales soportados por el proveedor oficial correspondiente para esta corrida.</p>
               </div>
               <div class="wizard-provider-grid">
                 <div class="prompt-shell">
-                  <label for="wizard-fal-model">Modelo de fal.ai</label>
+                  <label for="wizard-fal-model">Modelo de imagen</label>
                   <select id="wizard-fal-model" class="wizard-select">
                     <% for (const modelId of falModelOptions) { %>
                       <option value="<%= modelId %>" <%= modelId === defaultProviderSettings.modelId ? "selected" : "" %>><%= modelId %></option>
@@ -289,12 +284,12 @@
                   <select id="wizard-image-size" class="wizard-select">
                     <option value="square_hd" <%= defaultProviderSettings.imageSize === "square_hd" ? "selected" : "" %>>square_hd</option>
                     <option value="square" <%= defaultProviderSettings.imageSize === "square" ? "selected" : "" %>>square</option>
-                    <option value="portrait_4_3">portrait_4_3</option>
-                    <option value="portrait_16_9">portrait_16_9</option>
-                    <option value="landscape_4_3">landscape_4_3</option>
-                    <option value="landscape_16_9">landscape_16_9</option>
-                    <option value="auto_2K">auto_2K</option>
-                    <option value="auto_4K">auto_4K</option>
+                    <option value="portrait_4_3" <%= defaultProviderSettings.imageSize === "portrait_4_3" ? "selected" : "" %>>portrait_4_3</option>
+                    <option value="portrait_16_9" <%= defaultProviderSettings.imageSize === "portrait_16_9" ? "selected" : "" %>>portrait_16_9</option>
+                    <option value="landscape_4_3" <%= defaultProviderSettings.imageSize === "landscape_4_3" ? "selected" : "" %>>landscape_4_3</option>
+                    <option value="landscape_16_9" <%= defaultProviderSettings.imageSize === "landscape_16_9" ? "selected" : "" %>>landscape_16_9</option>
+                    <option value="auto_2K" <%= defaultProviderSettings.imageSize === "auto_2K" ? "selected" : "" %>>auto_2K</option>
+                    <option value="auto_4K" <%= defaultProviderSettings.imageSize === "auto_4K" ? "selected" : "" %>>auto_4K</option>
                     <option value="custom">custom</option>
                   </select>
                 </div>
